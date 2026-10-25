@@ -78,6 +78,7 @@ export default function ArchitectureModal({ isOpen, onClose }) {
                 <thead>
                   <tr>
                     <th>Button</th>
+                    <th>Backend File</th>
                     <th>Flask Endpoint</th>
                     <th>Algorithm in Plain English</th>
                   </tr>
@@ -85,21 +86,25 @@ export default function ArchitectureModal({ isOpen, onClose }) {
                 <tbody>
                   <tr>
                     <td><strong>Summarize Text</strong></td>
+                    <td><code>text_summarization.py</code></td>
                     <td><code>POST /api/summarize</code></td>
                     <td>Splits into sentences, calculates non-stopword frequencies, scores sentences by word weight & position, selects top key sentences.</td>
                   </tr>
                   <tr>
                     <td><strong>Sentiment</strong></td>
+                    <td><code>sentiment_analysis.py</code></td>
                     <td><code>POST /api/sentiment</code></td>
                     <td>Lexicon polarity scoring (-2 to +2), reverses polarity on negation words ('not good'), amplifies on intensifiers ('very'), predicts 1-5 star rating.</td>
                   </tr>
                   <tr>
                     <td><strong>Emotion</strong></td>
+                    <td><code>emotion_analysis.py</code></td>
                     <td><code>POST /api/emotion</code></td>
                     <td>Scans text for emotional lexicon clusters (Joy, Anger, Sadness, Surprise, Fear, Disgust) and returns a percentage breakdown.</td>
                   </tr>
                   <tr>
                     <td><strong>Intent</strong></td>
+                    <td><code>intent_analysis.py</code></td>
                     <td><code>POST /api/intent</code></td>
                     <td>Detects customer goals: Refund Request, Quality Complaint, Praise, Inquiries, or Feature Suggestions with recommended merchant actions.</td>
                   </tr>
