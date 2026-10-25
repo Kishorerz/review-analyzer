@@ -4,36 +4,53 @@ A simple, fast, and transparent full-stack text analysis application. Input Amaz
 
 ---
 
-## 🏛️ Modular Backend Architecture
+## 🏛️ Vercel 2-Service Architecture
 
-The backend has separate, dedicated Python modules for each analysis type:
+The repository is configured to deploy on Vercel as a **multi-service project** (`vercel.json`):
+
+```
+┌────────────────────────────────────────────────────────┐
+│            Vercel Project Routing (vercel.json)        │
+│                                                        │
+│  /(.*)           ──► frontend service (React / Vite)   │
+│  /api/(.*)       ──► backend service  (Python / Flask) │
+└────────────────────────────────────────────────────────┘
+```
+
+- **`frontend` service** (`root: "frontend"`): Builds the React SPA with Vite. Publicly serves UI traffic on `/(.*)`.
+- **`backend` service** (`root: "backend"`): Runs the modular Flask NLP application. Publicly serves API endpoints on `/api/(.*)`.
+
+---
+
+## 📁 Project Structure
 
 ```
 review-analyzer/
+├── vercel.json                     # Vercel multi-service configuration
 ├── run_dev.bat                     # One-click Windows startup script
 ├── push_to_github.bat              # One-click GitHub push script
-├── README.md                       # Full documentation & architecture guide
+├── README.md                       # Documentation & architecture guide
 │
-├── backend/
-│   ├── app.py                      # Flask REST API routing requests to each module
+├── backend/                        # [Service 1: backend]
+│   ├── app.py                      # Flask REST router
 │   ├── text_utils.py               # Shared text cleaning & tokenization utilities
 │   ├── text_summarization.py       # [1] Text Summarization logic
-│   ├── sentiment_analysis.py       # [2] Sentiment Analysis & star prediction
+│   ├── sentiment_analysis.py       # [2] Sentiment Analysis & star rating
 │   ├── emotion_analysis.py         # [3] Emotional Analysis (Joy, Anger, etc.)
 │   ├── intent_analysis.py          # [4] Customer Intent & urgency detection
 │   ├── nlp_engine.py               # Unified pipeline aggregator (analyze_all)
-│   ├── requirements.txt            # Dependencies (Flask)
+│   ├── requirements.txt            # Python dependencies (Flask)
 │   └── test_backend.py             # Unit & integration test suite (12 tests)
 │
-└── frontend/
+└── frontend/                       # [Service 2: frontend]
     ├── package.json                # React + Vite dependencies
-    ├── vite.config.js              # Vite config (runs on port 3000)
-    ├── index.html                  # Clean HTML shell
+    ├── vite.config.js              # Vite configuration
+    ├── index.html                  # HTML entry point
     └── src/
         ├── App.jsx                 # Main Dashboard state & flow
-        ├── App.css                 # High-quality modern glassmorphism styling
-        ├── api.js                  # REST client with offline fallback support
-        ├── main.jsx                # React root mount
+        ├── App.css                 # Modern glassmorphism styling
+        ├── api.js                  # REST client with seamless Vercel / local routing
+        ├── main.jsx                # React mount point
         └── components/
             ├── Header.jsx          # Top bar & status badge
             ├── ReviewInput.jsx     # Textarea & Amazon presets
@@ -44,46 +61,24 @@ review-analyzer/
 
 ---
 
-## 🔍 The 4 Dedicated Backend Modules Explained
-
-| Analysis Type | Dedicated Python File | Flask Endpoint | How It Works in Plain English |
-|---|---|---|---|
-| **📝 Summarize Text** | `text_summarization.py` | `POST /api/summarize` | Tokenizes sentences, removes common stopwords, calculates frequency importance of remaining words, scores sentences, and extracts the top 2 most informative sentences with key takeaway bullet points. |
-| **😊 Sentiment Analysis** | `sentiment_analysis.py` | `POST /api/sentiment` | Uses a calibrated sentiment lexicon. Checks for negation modifiers (e.g. *"not good"* flips to negative) and intensifiers (e.g. *"extremely bad"* amplifies negativity). Outputs polarity (-1.0 to +1.0), confidence %, and predicted 1–5 Amazon star rating. |
-| **🎭 Emotional Analysis** | `emotion_analysis.py` | `POST /api/emotion` | Categorizes text across 6 human emotions: **Joy**, **Anger**, **Sadness**, **Surprise**, **Fear**, and **Disgust**. Returns a visual percentage breakdown and trigger keywords. |
-| **🎯 Intent Analysis** | `intent_analysis.py` | `POST /api/intent` | Matches actionable customer intents: **Refund/Return**, **Product Defect Complaint**, **Praise/Recommendation**, **Product Inquiry/Question**, or **Improvement Suggestion**, accompanied by recommended business actions and urgency level (`High`, `Medium`, `Low`). |
-| **⚡ Run All** | `nlp_engine.py` | `POST /api/analyze-all` | Executes all 4 analyses simultaneously in a single unified payload. |
-
----
-
-## 🚀 How to Run
+## 🚀 How to Run Locally
 
 ### Method 1: One-Click Windows Launcher
-Double-click `run_dev.bat` in the root folder. It starts both the Flask backend and the React frontend in separate windows.
+Double-click `run_dev.bat` in the root folder. It starts both backend and frontend in separate windows.
 
-### Method 2: Manual Terminal Startup
-
-#### 1. Start the Flask Backend (Terminal 1)
+### Method 2: Vercel Dev (Multi-Service Local Testing)
 ```bash
-cd backend
-python app.py
+npx vercel dev
 ```
-> The API will be active at `http://127.0.0.1:5000`
-
-#### 2. Start the React Frontend (Terminal 2)
-```bash
-cd frontend
-npm run dev
-```
-> Open your browser at `http://localhost:3000`
+Vercel will build and run both the `frontend` and `backend` services together, injecting routes automatically.
 
 ---
 
 ## 🧪 Testing the Backend
 
-You can run the built-in test suite anytime to test both individual modules and Flask endpoints:
+You can run the built-in test suite anytime:
 ```bash
 cd backend
 python test_backend.py
 ```
-Outputs `Ran 12 tests in 0.6s ... OK`.
+Outputs `Ran 12 tests in 0.03s ... OK`.
