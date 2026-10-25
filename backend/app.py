@@ -48,8 +48,7 @@ def home():
             '/api/sentiment',
             '/api/emotion',
             '/api/intent',
-            '/api/analyze-all',
-            '/api/samples'
+            '/api/analyze-all'
         ]
     })
 
@@ -114,54 +113,7 @@ def full_analysis():
     result = analyze_all(text)
     return jsonify({'success': True, 'data': result})
 
-@app.route('/samples', methods=['GET'])
-@app.route('/api/samples', methods=['GET'])
-def sample_reviews():
-    """Returns preset review examples for quick 1-click testing."""
-    samples = [
-        {
-            'id': 1,
-            'title': '🌟 5-Star Rave Product Review (Wireless Earbuds)',
-            'product': 'SoundPro Ultra Wireless Earbuds',
-            'text': (
-                "I bought these earbuds two weeks ago and I am absolutely blown away! "
-                "The active noise cancellation is fantastic, and the battery easily lasts 8 hours on a single charge. "
-                "Sound quality is crisp with deep bass. The build quality feels sturdy and premium in the hands. "
-                "Worth every penny, highly recommend to anyone looking for high quality audio!"
-            )
-        },
-        {
-            'id': 2,
-            'title': '😡 1-Star Defect & Refund Request (Smart Watch)',
-            'product': 'FitPulse Smartwatch Pro',
-            'text': (
-                "Terrible experience! The watch screen cracked on day 3 while charging on my nightstand. "
-                "Now it completely stopped working and will not turn on. Customer support refused to help me. "
-                "This is a total ripoff and waste of money. I want an immediate replacement or full refund to my card!"
-            )
-        },
-        {
-            'id': 3,
-            'title': '⚖️ 3-Star Mixed Review (Coffee Maker)',
-            'product': 'AromaMaster 12-Cup Brewer',
-            'text': (
-                "The coffee maker brews hot and delicious coffee in under 5 minutes. The stainless steel carafe looks sleek on the counter. "
-                "However, the water reservoir is difficult to fill without spilling, and the digital clock loses 10 minutes every day. "
-                "It gets the job done, but there is definitely room for improvement in the next version."
-            )
-        },
-        {
-            'id': 4,
-            'title': '❓ Customer Inquiry & Setup Question (Mechanical Keyboard)',
-            'product': 'RGB Mechanical Gaming Keyboard',
-            'text': (
-                "I just received this keyboard in the mail. Does it support Mac OS shortcut keys out of the box? "
-                "Also, how do I configure the custom RGB backlighting profiles? Is there a software download link available somewhere? "
-                "Looking forward to hearing back from the seller."
-            )
-        }
-    ]
-    return jsonify({'success': True, 'samples': samples})
+
 
 
 if __name__ == '__main__':

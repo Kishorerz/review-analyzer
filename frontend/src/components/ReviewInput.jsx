@@ -1,12 +1,9 @@
 import React from 'react';
-import { Clipboard, Trash2, FileText, Sparkles } from 'lucide-react';
+import { Clipboard, Trash2, FileText } from 'lucide-react';
 
 export default function ReviewInput({
   reviewText,
-  setReviewText,
-  sampleReviews,
-  onSelectSample,
-  activeSampleId
+  setReviewText
 }) {
   const wordCount = reviewText.trim() ? reviewText.trim().split(/\s+/).length : 0;
   const charCount = reviewText.length;
@@ -33,7 +30,7 @@ export default function ReviewInput({
           <FileText className="card-icon" size={20} />
           <div>
             <h2 className="card-title">Customer Review Input</h2>
-            <p className="card-desc">Paste an Amazon review or select a ready-to-test sample below</p>
+            <p className="card-desc">Paste an Amazon, eCommerce, or customer review text to analyze</p>
           </div>
         </div>
 
@@ -59,43 +56,23 @@ export default function ReviewInput({
         </div>
       </div>
 
-      {/* Preset Review Chips */}
-      <div className="samples-container">
-        <span className="samples-label">Quick Test Reviews:</span>
-        <div className="samples-chips">
-          {sampleReviews.map((sample) => (
-            <button
-              key={sample.id}
-              type="button"
-              className={`sample-chip ${activeSampleId === sample.id ? 'active' : ''}`}
-              onClick={() => onSelectSample(sample)}
-            >
-              {sample.title}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Text Area */}
+      {/* Raw Review Text Area */}
       <div className="textarea-wrapper">
         <textarea
           className="review-textarea"
           rows={6}
-          placeholder="Paste an Amazon, eCommerce, or customer review here (e.g. 'I bought this camera last month. The picture quality is amazing in daylight, but the battery dies in 40 minutes...')"
+          placeholder="Paste review text here (e.g. 'I bought this item last week. The quality is fantastic, but shipping took too long. Can I get a replacement?')"
           value={reviewText}
           onChange={(e) => setReviewText(e.target.value)}
         />
       </div>
 
-      {/* Stats bar */}
+      {/* Character & Word Statistics */}
       <div className="input-footer">
         <div className="text-stats">
           <span><strong>{wordCount}</strong> words</span>
           <span className="dot-sep">•</span>
           <span><strong>{charCount}</strong> characters</span>
-        </div>
-        <div className="input-hint">
-          {wordCount === 0 && 'Tip: Click any sample review above to start instantly!'}
         </div>
       </div>
     </div>

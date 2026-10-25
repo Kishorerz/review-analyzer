@@ -4,12 +4,10 @@ import ReviewInput from './components/ReviewInput';
 import ActionButtons from './components/ActionButtons';
 import ResultDisplay from './components/ResultDisplay';
 import ArchitectureModal from './components/ArchitectureModal';
-import { checkBackendHealth, fetchSamples, requestAnalysis } from './api';
+import { checkBackendHealth, requestAnalysis } from './api';
 
 export default function App() {
   const [reviewText, setReviewText] = useState('');
-  const [samples, setSamples] = useState([]);
-  const [activeSampleId, setActiveSampleId] = useState(null);
   
   const [isBackendOnline, setIsBackendOnline] = useState(false);
   const [loadingType, setLoadingType] = useState(null);
@@ -19,20 +17,11 @@ export default function App() {
   const [isLocalFallback, setIsLocalFallback] = useState(false);
   const [showArchModal, setShowArchModal] = useState(false);
 
-  // Initialize samples & backend health check
+  // Initialize backend health check
   useEffect(() => {
     async function init() {
       const online = await checkBackendHealth();
       setIsBackendOnline(online);
-
-      const sampleList = await fetchSamples();
-      setSamples(sampleList);
-
-      // Preload first sample review for immediate interactive experience
-      if (sampleList && sampleList.length > 0) {
-        setReviewText(sampleList[0].text);
-        setActiveSampleId(sampleList[0].id);
-      }
     }
     init();
 
@@ -45,14 +34,9 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleSelectSample = (sample) => {
-    setReviewText(sample.text);
-    setActiveSampleId(sample.id);
-  };
-
   const handleAnalyze = async (actionType) => {
     if (!reviewText.trim()) {
-      alert('Please enter or select a review text first!');
+      alert('Please enter or paste a review text first!');
       return;
     }
 
@@ -68,7 +52,6 @@ export default function App() {
           intent: res.data.intent
         });
         setIsLocalFallback(res.isLocalFallback);
-        // Default to summarize tab on full analysis
         setActiveTab('summarize');
       }
     } else {
@@ -96,13 +79,10 @@ export default function App() {
         />
 
         <main className="main-content">
-          {/* Review Input Box + Presets */}
+          {/* Review Input Box */}
           <ReviewInput
             reviewText={reviewText}
             setReviewText={setReviewText}
-            sampleReviews={samples}
-            onSelectSample={handleSelectSample}
-            activeSampleId={activeSampleId}
           />
 
           {/* Action Trigger Buttons */}
@@ -124,12 +104,12 @@ export default function App() {
         <footer className="footer-credits">
           <p>
             Review Insight Dashboard • Built with React & Python Flask • 
-            Clean, modular, and easy to understand code architecture.
+            Modular and easy to understand code architecture.
           </p>
         </footer>
       </div>
 
-      {/* Architecture & How It Works Modal */}
+      {/* Architecture Modal */}
       <ArchitectureModal 
         isOpen={showArchModal} 
         onClose={() => setShowArchModal(false)} 

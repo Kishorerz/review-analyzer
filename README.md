@@ -39,8 +39,7 @@ review-analyzer/
 │   ├── emotion_analysis.py         # [3] Emotional Analysis (Joy, Anger, etc.)
 │   ├── intent_analysis.py          # [4] Customer Intent & urgency detection
 │   ├── nlp_engine.py               # Unified pipeline aggregator (analyze_all)
-│   ├── requirements.txt            # Python dependencies (Flask)
-│   └── test_backend.py             # Unit & integration test suite (12 tests)
+│   └── requirements.txt            # Python dependencies (Flask)
 │
 └── frontend/                       # [Service 2: frontend]
     ├── package.json                # React + Vite dependencies
@@ -72,13 +71,4 @@ npx vercel dev
 ```
 Vercel will build and run both the `frontend` and `backend` services together, injecting routes automatically.
 
----
 
-## 🧪 Testing the Backend
-
-You can run the built-in test suite anytime:
-```bash
-cd backend
-python test_backend.py
-```
-Outputs `Ran 12 tests in 0.03s ... OK`.

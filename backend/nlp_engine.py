@@ -34,10 +34,3 @@ def analyze_all(text):
     }
 
 
-if __name__ == '__main__':
-    sample = "I love this headphone! Superb sound and clear treble, but cord is too short."
-    res = analyze_all(sample)
-    print("Summarization:", res['summarization']['summary'])
-    print("Sentiment:", res['sentiment']['sentiment'])
-    print("Emotion:", res['emotion']['dominant_emotion'])
-    print("Intent:", res['intent']['primary_intent'])

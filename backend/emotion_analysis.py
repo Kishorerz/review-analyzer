@@ -120,9 +120,3 @@ def analyze_emotion(text):
     }
 
 
-if __name__ == '__main__':
-    sample = "I am so furious! This was a complete ripoff and waste of money!"
-    result = analyze_emotion(sample)
-    print("--- Emotion Analysis Test ---")
-    print("Dominant:", result['dominant_emotion'])
-    print("Breakdown:", result['breakdown'])

@@ -147,11 +147,3 @@ def analyze_intent(text):
     }
 
 
-if __name__ == '__main__':
-    sample = "The screen stopped working on day 2. Can I get a replacement or refund?"
-    result = analyze_intent(sample)
-    print("--- Intent Analysis Test ---")
-    print("Primary Intent:", result['primary_intent'])
-    print("Urgency:", result['urgency'])
-    print("Action:", result['recommended_action'])
-    print("Triggers:", result['detected_triggers'])

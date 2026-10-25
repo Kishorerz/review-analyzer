@@ -96,15 +96,3 @@ def summarize_text(text, max_sentences=2):
     }
 
 
-if __name__ == '__main__':
-    sample = (
-        "I purchased this laptop backpack for college last month. "
-        "The water-resistant fabric is durable and the laptop compartment is well padded. "
-        "However, the side bottle pocket is too tight for large bottles. "
-        "Overall, it is a great backpack and worth the purchase."
-    )
-    result = summarize_text(sample)
-    print("--- Text Summarization Test ---")
-    print("Summary:", result['summary'])
-    print("Takeaways:", result['key_takeaways'])
-    print("Compression:", result['compression_ratio'])

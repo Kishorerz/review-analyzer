@@ -130,12 +130,3 @@ def analyze_sentiment(text):
     }
 
 
-if __name__ == '__main__':
-    sample = "The screen quality is amazing and super clear, but the battery is not good."
-    result = analyze_sentiment(sample)
-    print("--- Sentiment Analysis Test ---")
-    print("Sentiment:", result['sentiment'])
-    print("Score:", result['score'])
-    print("Stars:", result['predicted_rating'])
-    print("Positive:", result['positive_words'])
-    print("Negative:", result['negative_words'])
