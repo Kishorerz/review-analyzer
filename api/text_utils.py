@@ -1,0 +1,41 @@
+"""
+Common Text Processing Utilities & Stopwords
+--------------------------------------------
+Helper functions shared across the analysis modules:
+- clean_words: Extracts lowercase words from string
+- split_sentences: Splits text into distinct sentences
+- STOPWORDS: Standard English stopwords for frequency filtering
+"""
+
+import re
+
+# Standard English stopwords to filter out for frequency analysis
+STOPWORDS = {
+    'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', "you're", "you've",
+    "you'll", "you'd", 'your', 'yours', 'yourself', 'yourselves', 'he', 'him', 'his', 'himself',
+    'she', "she's", 'her', 'hers', 'herself', 'it', "it's", 'its', 'itself', 'they', 'them',
+    'their', 'theirs', 'themselves', 'what', 'which', 'who', 'whom', 'this', 'that', "that'll",
+    'these', 'those', 'am', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has',
+    'had', 'having', 'do', 'does', 'did', 'doing', 'a', 'an', 'the', 'and', 'but', 'if', 'or',
+    'because', 'as', 'until', 'while', 'of', 'at', 'by', 'for', 'with', 'about', 'against',
+    'between', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'to', 'from',
+    'up', 'down', 'in', 'out', 'on', 'off', 'over', 'under', 'again', 'further', 'then', 'once',
+    'here', 'there', 'when', 'where', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more',
+    'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than',
+    'too', 'very', 's', 't', 'can', 'will', 'just', 'don', 'should', "should've", 'now'
+}
+
+
+def clean_words(text):
+    """Convert text into a list of lowercase alphanumeric words."""
+    if not text:
+        return []
+    return re.findall(r"\b[a-zA-Z']+\b", text.lower())
+
+
+def split_sentences(text):
+    """Split text into sentences based on punctuation delimiters."""
+    if not text:
+        return []
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    return [s.strip() for s in sentences if s.strip()]

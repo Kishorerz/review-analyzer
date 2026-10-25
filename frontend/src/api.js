@@ -4,7 +4,12 @@
  * Provides clear error handling and offline fallback capability.
  */
 
-const API_BASE_URL = 'http://127.0.0.1:5000';
+// In local Vite dev (port 3000), use localhost:5000; on Vercel deployment, use relative '' path
+const isLocalDev = typeof window !== 'undefined' && 
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
+  (window.location.port === '3000' || window.location.port === '5173');
+
+const API_BASE_URL = isLocalDev ? 'http://127.0.0.1:5000' : '';
 
 export async function checkBackendHealth() {
   try {
