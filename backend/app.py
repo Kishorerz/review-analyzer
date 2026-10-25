@@ -53,10 +53,12 @@ def home():
         ]
     })
 
+@app.route('/health', methods=['GET'])
 @app.route('/api/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok'})
 
+@app.route('/summarize', methods=['POST', 'OPTIONS'])
 @app.route('/api/summarize', methods=['POST', 'OPTIONS'])
 def summarize():
     """Text Summarization Endpoint -> text_summarization.py"""
@@ -68,6 +70,7 @@ def summarize():
     result = summarize_text(text, max_sentences=max_sentences)
     return jsonify({'success': True, 'data': result})
 
+@app.route('/sentiment', methods=['POST', 'OPTIONS'])
 @app.route('/api/sentiment', methods=['POST', 'OPTIONS'])
 def sentiment():
     """Sentiment Analysis Endpoint -> sentiment_analysis.py"""
@@ -78,6 +81,7 @@ def sentiment():
     result = analyze_sentiment(text)
     return jsonify({'success': True, 'data': result})
 
+@app.route('/emotion', methods=['POST', 'OPTIONS'])
 @app.route('/api/emotion', methods=['POST', 'OPTIONS'])
 def emotion():
     """Emotion Analysis Endpoint -> emotion_analysis.py"""
@@ -88,6 +92,7 @@ def emotion():
     result = analyze_emotion(text)
     return jsonify({'success': True, 'data': result})
 
+@app.route('/intent', methods=['POST', 'OPTIONS'])
 @app.route('/api/intent', methods=['POST', 'OPTIONS'])
 def intent():
     """Intent Analysis Endpoint -> intent_analysis.py"""
@@ -98,6 +103,7 @@ def intent():
     result = analyze_intent(text)
     return jsonify({'success': True, 'data': result})
 
+@app.route('/analyze-all', methods=['POST', 'OPTIONS'])
 @app.route('/api/analyze-all', methods=['POST', 'OPTIONS'])
 def full_analysis():
     """Unified Pipeline Endpoint -> runs all 4 modular analyses"""
@@ -108,6 +114,7 @@ def full_analysis():
     result = analyze_all(text)
     return jsonify({'success': True, 'data': result})
 
+@app.route('/samples', methods=['GET'])
 @app.route('/api/samples', methods=['GET'])
 def sample_reviews():
     """Returns preset review examples for quick 1-click testing."""
