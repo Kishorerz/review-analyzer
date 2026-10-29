@@ -15,6 +15,7 @@ export default function ReviewInput({
 }) {
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(true);
+  const [voiceLang, setVoiceLang] = useState('en-IN');
   const [targetLang, setTargetLang] = useState('es');
   const [copiedTrans, setCopiedTrans] = useState(false);
   const recognitionRef = useRef(null);
@@ -33,8 +34,7 @@ export default function ReviewInput({
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'en-US';
-    recognition.lang = 'ta-IN';
+    recognition.lang = voiceLang;
 
     recognition.onresult = (event) => {
       let finalTranscript = '';
@@ -72,6 +72,9 @@ export default function ReviewInput({
       setIsListening(false);
     } else {
       try {
+        if (recognitionRef.current) {
+          recognitionRef.current.lang = voiceLang;
+        }
         recognitionRef.current?.start();
         setIsListening(true);
       } catch (err) {
@@ -115,24 +118,50 @@ export default function ReviewInput({
         </div>
 
         <div className="quick-actions">
-          {/* 1. Voice to Text Button */}
-          <button
-            type="button"
-            className={`text-action-btn ${isListening ? 'text-action-btn-recording' : ''}`}
-            onClick={toggleListening}
-            title={isListening ? 'Click to stop recording' : 'Click to speak review via microphone'}
-          >
-            {isListening ? (
-              <>
-                <span className="recording-pulse" />
-                <MicOff size={14} /> Listening... Stop
-              </>
-            ) : (
-              <>
-                <Mic size={14} /> Voice Input
-              </>
-            )}
-          </button>
+          {/* 1. Voice to Text Button + Language Selector */}
+          <div className="voice-input-group">
+            <button
+              type="button"
+              className={`text-action-btn ${isListening ? 'text-action-btn-recording' : ''}`}
+              onClick={toggleListening}
+              title={isListening ? 'Click to stop recording' : 'Click to speak review via microphone'}
+            >
+              {isListening ? (
+                <>
+                  <span className="recording-pulse" />
+                  <MicOff size={14} /> Stop
+                </>
+              ) : (
+                <>
+                  <Mic size={14} /> Voice Input
+                </>
+              )}
+            </button>
+            <select
+              className="voice-lang-select"
+              value={voiceLang}
+              onChange={(e) => setVoiceLang(e.target.value)}
+              disabled={isListening}
+              title="Select spoken language for speech recognition"
+            >
+              <option value="en-IN">🇮🇳 English (India)</option>
+              <option value="en-US">🇺🇸 English (US)</option>
+              <option value="en-GB">🇬🇧 English (UK)</option>
+              <option value="hi-IN">🇮🇳 Hindi (हिंदी)</option>
+              <option value="ta-IN">🇮🇳 Tamil (தமிழ்)</option>
+              <option value="te-IN">🇮🇳 Telugu (తెలుగు)</option>
+              <option value="kn-IN">🇮🇳 Kannada (ಕನ್ನಡ)</option>
+              <option value="ml-IN">🇮🇳 Malayalam (മലയാളം)</option>
+              <option value="mr-IN">🇮🇳 Marathi (मराठी)</option>
+              <option value="bn-IN">🇮🇳 Bengali (বাংলা)</option>
+              <option value="es-ES">🇪🇸 Spanish (Español)</option>
+              <option value="fr-FR">🇫🇷 French (Français)</option>
+              <option value="de-DE">🇩🇪 German (Deutsch)</option>
+              <option value="zh-CN">🇨🇳 Chinese (中文)</option>
+              <option value="ja-JP">🇯🇵 Japanese (日本語)</option>
+              <option value="ar-SA">🇸🇦 Arabic (العربية)</option>
+            </select>
+          </div>
 
           {/* 2. Paste Button */}
           <button 

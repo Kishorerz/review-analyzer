@@ -1286,6 +1286,43 @@ body {
 /* ===================================================================
    Voice Input & Speech Recognition Styles
    =================================================================== */
+.voice-input-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--bg-card-border);
+  border-radius: var(--radius-sm);
+  padding: 2px 4px;
+}
+
+.voice-input-group .text-action-btn {
+  border: none;
+  background: transparent;
+  padding: 4px 8px;
+}
+
+.voice-lang-select {
+  background: #0d121f;
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  font-size: 0.74rem;
+  padding: 3px 6px;
+  outline: none;
+  cursor: pointer;
+  max-width: 135px;
+}
+
+.voice-lang-select:focus {
+  border-color: var(--primary-500);
+}
+
+.voice-lang-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .text-action-btn-recording {
   background: rgba(244, 63, 94, 0.2) !important;
   color: #f43f5e !important;
