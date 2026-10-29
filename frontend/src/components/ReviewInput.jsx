@@ -34,6 +34,7 @@ export default function ReviewInput({
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
+    recognition.lang = 'ta-IN';
 
     recognition.onresult = (event) => {
       let finalTranscript = '';
