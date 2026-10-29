@@ -20,6 +20,8 @@ from text_summarization import summarize_text
 from sentiment_analysis import analyze_sentiment
 from emotion_analysis import analyze_emotion
 from intent_analysis import analyze_intent
+from similarity_service import compute_similarity
+from translation_service import translate_text
 from nlp_engine import analyze_all
 
 app = Flask(__name__)
@@ -100,6 +102,31 @@ def intent():
     data = request.get_json(silent=True) or {}
     text = data.get('text', '')
     result = analyze_intent(text)
+    return jsonify({'success': True, 'data': result})
+
+@app.route('/translate', methods=['POST', 'OPTIONS'])
+@app.route('/api/translate', methods=['POST', 'OPTIONS'])
+def translate():
+    """Translation Endpoint -> translation_service.py"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    data = request.get_json(silent=True) or {}
+    text = data.get('text', '')
+    target_lang = data.get('target_lang', 'es')
+    source_lang = data.get('source_lang', 'auto')
+    result = translate_text(text, target_lang=target_lang, source_lang=source_lang)
+    return jsonify({'success': True, 'data': result})
+
+@app.route('/similarity', methods=['POST', 'OPTIONS'])
+@app.route('/api/similarity', methods=['POST', 'OPTIONS'])
+def similarity():
+    """Similarity Index Endpoint -> similarity_service.py"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    data = request.get_json(silent=True) or {}
+    text1 = data.get('text1', '')
+    text2 = data.get('text2', '')
+    result = compute_similarity(text1, text2)
     return jsonify({'success': True, 'data': result})
 
 @app.route('/analyze-all', methods=['POST', 'OPTIONS'])

@@ -1,35 +1,42 @@
 import React from 'react';
-import { AlignLeft, Smile, Heart, Compass, Zap, Loader2 } from 'lucide-react';
+import { AlignLeft, Smile, Heart, Compass, GitCompare, Zap, Loader2 } from 'lucide-react';
 
-export default function ActionButtons({ onAnalyze, activeTab, loadingType }) {
+export default function ActionButtons({ onAnalyze, activeTab, loadingType, hasCompareText }) {
   const actions = [
     {
       id: 'summarize',
       label: 'Summarize Text',
-      subtitle: 'Key takeaways & bullet points',
+      subtitle: 'Key takeaways & points',
       icon: AlignLeft,
       color: 'blue'
     },
     {
       id: 'sentiment',
       label: 'Sentiment Analysis',
-      subtitle: 'Positive / Negative / Neutral score',
+      subtitle: 'Positive / Negative score',
       icon: Smile,
       color: 'emerald'
     },
     {
       id: 'emotion',
       label: 'Emotional Analysis',
-      subtitle: 'Joy, Anger, Disappointment, etc.',
+      subtitle: 'Joy, Anger, Sadness, etc.',
       icon: Heart,
       color: 'rose'
     },
     {
       id: 'intent',
       label: 'Intent Analysis',
-      subtitle: 'Refund, Defect, Praise, Inquiry',
+      subtitle: 'Refund, Defect, Praise',
       icon: Compass,
       color: 'amber'
+    },
+    {
+      id: 'similarity',
+      label: 'Similarity Index',
+      subtitle: hasCompareText ? 'Compare with Review #2' : 'Click to compare reviews',
+      icon: GitCompare,
+      color: 'purple'
     }
   ];
 
@@ -48,11 +55,11 @@ export default function ActionButtons({ onAnalyze, activeTab, loadingType }) {
           ) : (
             <Zap size={17} />
           )}
-          <span>⚡ Run Complete Analysis (All 4)</span>
+          <span>⚡ Run Complete Analysis (All)</span>
         </button>
       </div>
 
-      <div className="action-grid">
+      <div className="action-grid action-grid-5">
         {actions.map((act) => {
           const Icon = act.icon;
           const isActive = activeTab === act.id;
@@ -68,9 +75,9 @@ export default function ActionButtons({ onAnalyze, activeTab, loadingType }) {
             >
               <div className="btn-icon-wrapper">
                 {isLoading ? (
-                  <Loader2 className="spin-icon" size={24} />
+                  <Loader2 className="spin-icon" size={22} />
                 ) : (
-                  <Icon size={24} />
+                  <Icon size={22} />
                 )}
               </div>
               <div className="btn-content">

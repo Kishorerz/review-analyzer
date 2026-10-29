@@ -108,6 +108,24 @@ export default function ArchitectureModal({ isOpen, onClose }) {
                     <td><code>POST /api/intent</code></td>
                     <td>Detects customer goals: Refund Request, Quality Complaint, Praise, Inquiries, or Feature Suggestions with recommended merchant actions.</td>
                   </tr>
+                  <tr>
+                    <td><strong>Voice to Text</strong></td>
+                    <td><code>Browser Native</code></td>
+                    <td><code>Web Speech API</code></td>
+                    <td>Uses native browser speech recognition engine to transcribe spoken voice into review text in real-time with zero server latency.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Translation</strong></td>
+                    <td><code>translation_service.py</code></td>
+                    <td><code>POST /api/translate</code></td>
+                    <td>Translates text across 10+ languages (Spanish, French, German, Hindi, etc.) without requiring paid API keys.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Similarity Index</strong></td>
+                    <td><code>similarity_service.py</code></td>
+                    <td><code>POST /api/similarity</code></td>
+                    <td>Computes Jaccard word set overlap and Cosine term frequency vectors between 2 reviews to detect duplicates and template spam.</td>
+                  </tr>
                 </tbody>
               </table>
             </div>

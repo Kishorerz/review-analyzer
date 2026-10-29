@@ -4,10 +4,15 @@ import ReviewInput from './components/ReviewInput';
 import ActionButtons from './components/ActionButtons';
 import ResultDisplay from './components/ResultDisplay';
 import ArchitectureModal from './components/ArchitectureModal';
-import { checkBackendHealth, requestAnalysis } from './api';
+import { checkBackendHealth, requestAnalysis, requestTranslation, requestSimilarity } from './api';
 
 export default function App() {
   const [reviewText, setReviewText] = useState('');
+  const [compareText, setCompareText] = useState('');
+  const [showCompare, setShowCompare] = useState(false);
+
+  const [translationResult, setTranslationResult] = useState(null);
+  const [translationLoading, setTranslationLoading] = useState(false);
   
   const [isBackendOnline, setIsBackendOnline] = useState(false);
   const [loadingType, setLoadingType] = useState(null);
@@ -25,7 +30,6 @@ export default function App() {
     }
     init();
 
-    // Check health periodically every 10 seconds
     const interval = setInterval(async () => {
       const online = await checkBackendHealth();
       setIsBackendOnline(online);
@@ -34,9 +38,56 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // Handle Translate
+  const handleTranslate = async (targetLang) => {
+    if (!reviewText.trim()) {
+      alert('Please enter or speak review text first before translating.');
+      return;
+    }
+    setTranslationLoading(true);
+    const res = await requestTranslation(reviewText, targetLang);
+    if (res.success && res.data) {
+      setTranslationResult(res.data);
+      setResults((prev) => ({
+        ...prev,
+        translation: res.data
+      }));
+    }
+    setTranslationLoading(false);
+  };
+
+  // Replace review textarea with translated text
+  const handleApplyTranslation = () => {
+    if (translationResult?.translated_text) {
+      setReviewText(translationResult.translated_text);
+    }
+  };
+
+  // Handle Analysis Triggers
   const handleAnalyze = async (actionType) => {
     if (!reviewText.trim()) {
-      alert('Please enter or paste a review text first!');
+      alert('Please enter, paste, or speak a review text first!');
+      return;
+    }
+
+    // Similarity special handling: Requires 2 texts
+    if (actionType === 'similarity') {
+      if (!compareText.trim()) {
+        setShowCompare(true);
+        alert('Similarity Index compares two reviews! Please paste a 2nd review into the "Review #2" box that just opened, then click Similarity Index again.');
+        return;
+      }
+      setLoadingType('similarity');
+      const res = await requestSimilarity(reviewText, compareText);
+      if (res.success && res.data) {
+        setResults((prev) => ({
+          ...prev,
+          similarity: res.data
+        }));
+        setIsLocalFallback(res.isLocalFallback);
+        setActiveTab('similarity');
+      }
+      setLoadingType(null);
       return;
     }
 
@@ -45,12 +96,22 @@ export default function App() {
     if (actionType === 'analyze-all') {
       const res = await requestAnalysis('analyze-all', reviewText);
       if (res.success && res.data) {
-        setResults({
+        const updated = {
           summarize: res.data.summarization,
           sentiment: res.data.sentiment,
           emotion: res.data.emotion,
           intent: res.data.intent
-        });
+        };
+
+        // If user provided a 2nd review, also compute similarity in "analyze-all"
+        if (compareText.trim()) {
+          const simRes = await requestSimilarity(reviewText, compareText);
+          if (simRes.success && simRes.data) {
+            updated.similarity = simRes.data;
+          }
+        }
+
+        setResults(updated);
         setIsLocalFallback(res.isLocalFallback);
         setActiveTab('summarize');
       }
@@ -79,10 +140,18 @@ export default function App() {
         />
 
         <main className="main-content">
-          {/* Review Input Box */}
+          {/* Review Input Box with Voice, Translate & Compare */}
           <ReviewInput
             reviewText={reviewText}
             setReviewText={setReviewText}
+            compareText={compareText}
+            setCompareText={setCompareText}
+            showCompare={showCompare}
+            setShowCompare={setShowCompare}
+            onTranslate={handleTranslate}
+            translationLoading={translationLoading}
+            translationResult={translationResult}
+            onApplyTranslation={handleApplyTranslation}
           />
 
           {/* Action Trigger Buttons */}
@@ -90,6 +159,7 @@ export default function App() {
             onAnalyze={handleAnalyze}
             activeTab={activeTab}
             loadingType={loadingType}
+            hasCompareText={Boolean(compareText.trim())}
           />
 
           {/* Results Display */}
@@ -104,7 +174,7 @@ export default function App() {
         <footer className="footer-credits">
           <p>
             Review Insight Dashboard • Built with React & Python Flask • 
-            Modular and easy to understand code architecture.
+            Voice to Text • Translation • Similarity Index • Summarization • Sentiment • Emotion • Intent
           </p>
         </footer>
       </div>

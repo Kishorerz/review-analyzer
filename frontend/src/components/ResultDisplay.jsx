@@ -9,7 +9,10 @@ import {
   AlertTriangle, 
   Star, 
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  GitCompare,
+  Languages,
+  Check
 } from 'lucide-react';
 
 export default function ResultDisplay({ 
@@ -82,6 +85,28 @@ export default function ResultDisplay({
               <span>Intent</span>
             </button>
           )}
+
+          {results.similarity && (
+            <button
+              type="button"
+              className={`result-tab-btn ${activeTab === 'similarity' ? 'active' : ''}`}
+              onClick={() => setActiveTab('similarity')}
+            >
+              <GitCompare size={16} />
+              <span>Similarity</span>
+            </button>
+          )}
+
+          {results.translation && (
+            <button
+              type="button"
+              className={`result-tab-btn ${activeTab === 'translation' ? 'active' : ''}`}
+              onClick={() => setActiveTab('translation')}
+            >
+              <Languages size={16} />
+              <span>Translation</span>
+            </button>
+          )}
         </div>
 
         {isLocalFallback && (
@@ -106,6 +131,14 @@ export default function ResultDisplay({
 
         {activeTab === 'intent' && results.intent && (
           <IntentView data={results.intent} />
+        )}
+
+        {activeTab === 'similarity' && results.similarity && (
+          <SimilarityView data={results.similarity} />
+        )}
+
+        {activeTab === 'translation' && results.translation && (
+          <TranslationView data={results.translation} />
         )}
       </div>
     </div>
@@ -354,6 +387,128 @@ function IntentView({ data }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------
+// 5. SIMILARITY VIEW COMPONENT
+// -------------------------------------------------------------------
+function SimilarityView({ data }) {
+  const isHigh = data.percentage >= 75;
+  const isModerate = data.percentage >= 45 && data.percentage < 75;
+  const badgeClass = isHigh ? 'badge-rose' : (isModerate ? 'badge-amber' : 'badge-emerald');
+
+  return (
+    <div className="view-panel animate-fade-in">
+      <div className="view-badge-row">
+        <span className="view-badge badge-purple">
+          <GitCompare size={14} /> Similarity Index Analysis
+        </span>
+        <span className={`view-badge ${badgeClass}`}>
+          {data.badge || `${data.percentage}% Match`}
+        </span>
+      </div>
+
+      <div className="similarity-hero-card">
+        <div className="similarity-score-circle">
+          <span className="sim-pct-number">{data.percentage}%</span>
+          <span className="sim-pct-label">Similarity</span>
+        </div>
+        <div className="similarity-verdict-wrap">
+          <h4 className="sim-verdict-title">Comparison Result</h4>
+          <p className="sim-verdict-text">{data.verdict}</p>
+        </div>
+      </div>
+
+      {/* Progress track */}
+      <div className="meter-wrapper" style={{ height: '10px' }}>
+        <div 
+          className={`meter-fill ${isHigh ? 'fill-rose' : (isModerate ? 'fill-amber' : 'fill-emerald')}`}
+          style={{ width: `${Math.max(data.percentage, 4)}%` }}
+        />
+      </div>
+
+      {/* Keywords Breakdown */}
+      <div className="keywords-section">
+        {data.common_keywords && data.common_keywords.length > 0 && (
+          <div className="keyword-group">
+            <span className="keyword-header" style={{ color: '#c084fc' }}>
+              Common Overlapping Keywords ({data.common_keywords.length}):
+            </span>
+            <div className="tags-container">
+              {data.common_keywords.map((kw, i) => (
+                <span key={i} className="tag tag-intent">{kw}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="metrics-grid">
+          {data.unique_words_1 && data.unique_words_1.length > 0 && (
+            <div className="metric-card">
+              <span className="metric-title">Unique to Review #1:</span>
+              <div className="tags-container" style={{ marginTop: '8px' }}>
+                {data.unique_words_1.map((w, i) => (
+                  <span key={i} className="tag tag-pos">{w}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {data.unique_words_2 && data.unique_words_2.length > 0 && (
+            <div className="metric-card">
+              <span className="metric-title">Unique to Review #2:</span>
+              <div className="tags-container" style={{ marginTop: '8px' }}>
+                {data.unique_words_2.map((w, i) => (
+                  <span key={i} className="tag tag-neg">{w}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------
+// 6. TRANSLATION VIEW COMPONENT
+// -------------------------------------------------------------------
+function TranslationView({ data }) {
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(data.translated_text || '');
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="view-panel animate-fade-in">
+      <div className="view-badge-row">
+        <span className="view-badge badge-blue">
+          <Languages size={14} /> Multi-Language Translation
+        </span>
+        <span className="dominant-pill">
+          Target: <strong>{data.target_lang_name || data.target_lang}</strong>
+        </span>
+      </div>
+
+      <div className="summary-highlight-box" style={{ borderLeftColor: '#818cf8' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <h4 className="box-title" style={{ margin: 0 }}>Translated Output</h4>
+          <button
+            type="button"
+            className="text-action-btn"
+            onClick={handleCopy}
+          >
+            {copied ? <Check size={14} /> : null}
+            {copied ? 'Copied' : 'Copy Text'}
+          </button>
+        </div>
+        <p className="summary-text">{data.translated_text}</p>
+      </div>
     </div>
   );
 }

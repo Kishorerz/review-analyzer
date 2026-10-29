@@ -25,6 +25,69 @@ export async function checkBackendHealth() {
 
 
 
+export async function requestTranslation(text, targetLang = 'es') {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/translate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, target_lang: targetLang })
+    });
+    if (!response.ok) throw new Error(`Server returned HTTP ${response.status}`);
+    const json = await response.json();
+    return { success: true, data: json.data, isLocalFallback: false };
+  } catch (err) {
+    console.warn('Translate error, using local fallback:', err.message);
+    const langNames = { es: 'Spanish', fr: 'French', de: 'German', hi: 'Hindi', zh: 'Chinese', ja: 'Japanese', ar: 'Arabic', ta: 'Tamil' };
+    return {
+      success: true,
+      data: {
+        translated_text: `[${langNames[targetLang] || targetLang} Translation]: ${text}`,
+        source_lang: 'auto',
+        target_lang: targetLang,
+        target_lang_name: langNames[targetLang] || targetLang,
+        success: true
+      },
+      isLocalFallback: true
+    };
+  }
+}
+
+export async function requestSimilarity(text1, text2) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/similarity`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text1, text2 })
+    });
+    if (!response.ok) throw new Error(`Server returned HTTP ${response.status}`);
+    const json = await response.json();
+    return { success: true, data: json.data, isLocalFallback: false };
+  } catch (err) {
+    console.warn('Similarity error, using local fallback:', err.message);
+    // Simple client-side fallback word overlap
+    const words1 = (text1 || '').toLowerCase().match(/\b[a-z]{3,}\b/g) || [];
+    const words2 = (text2 || '').toLowerCase().match(/\b[a-z]{3,}\b/g) || [];
+    const set1 = new Set(words1);
+    const set2 = new Set(words2);
+    const common = [...set1].filter(w => set2.has(w));
+    const union = new Set([...set1, ...set2]);
+    const pct = union.size ? Math.round((common.length / union.size) * 100) : 0;
+    return {
+      success: true,
+      data: {
+        similarity_score: (pct / 100).toFixed(2),
+        percentage: pct,
+        common_keywords: common.slice(0, 8),
+        unique_words_1: [...set1].filter(w => !set2.has(w)).slice(0, 6),
+        unique_words_2: [...set2].filter(w => !set1.has(w)).slice(0, 6),
+        verdict: pct > 70 ? 'High similarity (Likely duplicate/template)' : (pct > 40 ? 'Moderate overlap in vocabulary' : 'Distinct reviews with low overlap'),
+        badge: pct > 70 ? 'High (Duplicate)' : (pct > 40 ? 'Moderate' : 'Distinct')
+      },
+      isLocalFallback: true
+    };
+  }
+}
+
 export async function requestAnalysis(endpoint, text) {
   try {
     const response = await fetch(`${API_BASE_URL}/api/${endpoint}`, {
