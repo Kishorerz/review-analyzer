@@ -1367,6 +1367,90 @@ body {
   border-radius: 20px;
 }
 
+/* ===================================================================
+   Live Sonagraph / Audio Waveform Visualizer
+   =================================================================== */
+.sonagraph-container {
+  position: absolute;
+  bottom: 12px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(244, 63, 94, 0.45);
+  padding: 6px 14px;
+  border-radius: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+}
+
+.sonagraph-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sonagraph-text {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  letter-spacing: 0.01em;
+}
+
+/* Dancing Sound Waveform Bars */
+.sonagraph-wave {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 24px;
+  padding: 0 4px;
+}
+
+.wave-bar {
+  width: 3.5px;
+  background: rgba(244, 63, 94, 0.35);
+  border-radius: 3px;
+  transition: height 0.08s ease-in-out, background 0.15s ease;
+  min-height: 4px;
+}
+
+.wave-bar-active {
+  background: linear-gradient(180deg, #38bdf8, #818cf8);
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.5);
+}
+
+/* Volume Meter */
+.audio-meter-wrap {
+  width: 44px;
+  height: 5px;
+  background: #1e293b;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.audio-meter-bar {
+  height: 100%;
+  background: #64748b;
+  border-radius: 4px;
+  transition: width 0.08s ease;
+}
+
+.meter-hearing {
+  background: linear-gradient(90deg, #10b981, #34d399) !important;
+  box-shadow: 0 0 8px #10b981;
+}
+
+.detected-lang-pill {
+  font-size: 0.72rem;
+  background: rgba(99, 102, 241, 0.18);
+  color: #c7d2fe;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+}
+
 .live-dot {
   width: 8px;
   height: 8px;

@@ -15,13 +15,104 @@ export default function ReviewInput({
 }) {
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(true);
-  const [voiceLang, setVoiceLang] = useState('en-IN');
+  const [voiceLang, setVoiceLang] = useState('auto');
   const [targetLang, setTargetLang] = useState('es');
   const [copiedTrans, setCopiedTrans] = useState(false);
+  const [detectedVoiceLang, setDetectedVoiceLang] = useState('');
+  const [audioLevel, setAudioLevel] = useState(0); // 0 to 100 real-time volume
+  const [waveBars, setWaveBars] = useState([8, 12, 16, 20, 16, 12, 8]); // Sonagraph bars
+
   const recognitionRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const animationFrameRef = useRef(null);
+  const mediaStreamRef = useRef(null);
 
   const wordCount = reviewText.trim() ? reviewText.trim().split(/\s+/).length : 0;
   const charCount = reviewText.length;
+
+  // Function to detect script / language from transcribed text
+  const detectLanguageScript = (text) => {
+    if (!text) return '';
+    if (/[\u0900-\u097F]/.test(text)) return 'Hindi (हिंदी)';
+    if (/[\u0B80-\u0BFF]/.test(text)) return 'Tamil (தமிழ்)';
+    if (/[\u0C00-\u0C7F]/.test(text)) return 'Telugu (తెలుగు)';
+    if (/[\u0C80-\u0CFF]/.test(text)) return 'Kannada (ಕನ್ನಡ)';
+    if (/[\u0D00-\u0D7F]/.test(text)) return 'Malayalam (മലയാളം)';
+    if (/[\u0980-\u09FF]/.test(text)) return 'Bengali (বাংলা)';
+    if (/[\u4E00-\u9FFF]/.test(text)) return 'Chinese (中文)';
+    if (/[\u3040-\u30FF]/.test(text)) return 'Japanese (日本語)';
+    if (/[\u0600-\u06FF]/.test(text)) return 'Arabic (العربية)';
+    if (/[áéíóúüñ¿¡]/i.test(text)) return 'Spanish (Español)';
+    if (/[éàèùâêîôûëïüç]/i.test(text)) return 'French (Français)';
+    if (/[äöüß]/i.test(text)) return 'German (Deutsch)';
+    return 'English / Latin';
+  };
+
+  // Real-time Audio Sonagraph using Web Audio API
+  const startAudioSonagraph = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+
+      const audioCtx = new AudioContext();
+      audioContextRef.current = audioCtx;
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 32;
+      analyser.smoothingTimeConstant = 0.5;
+      source.connect(analyser);
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      const updateSonagraph = () => {
+        analyser.getByteFrequencyData(dataArray);
+
+        // Calculate average volume level (0 to 100)
+        const sum = dataArray.reduce((acc, val) => acc + val, 0);
+        const avg = Math.min(100, Math.round((sum / dataArray.length) * 1.6));
+        setAudioLevel(avg);
+
+        // Generate 7 responsive soundwave heights based on frequency spectrum
+        const bars = [
+          Math.max(6, Math.round((dataArray[1] || 0) / 4)),
+          Math.max(8, Math.round((dataArray[3] || 0) / 3)),
+          Math.max(12, Math.round((dataArray[5] || 0) / 2.5)),
+          Math.max(16, Math.round((dataArray[7] || 0) / 2.2)),
+          Math.max(12, Math.round((dataArray[9] || 0) / 2.5)),
+          Math.max(8, Math.round((dataArray[11] || 0) / 3)),
+          Math.max(6, Math.round((dataArray[13] || 0) / 4)),
+        ];
+        setWaveBars(bars);
+
+        animationFrameRef.current = requestAnimationFrame(updateSonagraph);
+      };
+
+      updateSonagraph();
+    } catch (err) {
+      console.warn('Microphone audio stream error:', err);
+    }
+  };
+
+  const stopAudioSonagraph = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    setAudioLevel(0);
+    setWaveBars([8, 12, 16, 20, 16, 12, 8]);
+  };
 
   // Initialize Speech Recognition
   useEffect(() => {
@@ -34,7 +125,8 @@ export default function ReviewInput({
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = voiceLang;
+    const initialLang = voiceLang === 'auto' ? (navigator.language || 'en-US') : voiceLang;
+    recognition.lang = initialLang;
 
     recognition.onresult = (event) => {
       let finalTranscript = '';
@@ -46,19 +138,28 @@ export default function ReviewInput({
       }
       if (finalTranscript) {
         setReviewText((prev) => (prev ? prev.trim() + ' ' + finalTranscript.trim() : finalTranscript.trim()));
+        const detected = detectLanguageScript(finalTranscript);
+        if (detected) setDetectedVoiceLang(detected);
       }
     };
 
     recognition.onerror = (event) => {
       console.warn('Speech recognition error:', event.error);
+      stopAudioSonagraph();
       setIsListening(false);
     };
 
     recognition.onend = () => {
+      stopAudioSonagraph();
       setIsListening(false);
     };
 
     recognitionRef.current = recognition;
+
+    return () => {
+      stopAudioSonagraph();
+      recognition.stop();
+    };
   }, [setReviewText]);
 
   const toggleListening = () => {
@@ -69,16 +170,20 @@ export default function ReviewInput({
 
     if (isListening) {
       recognitionRef.current?.stop();
+      stopAudioSonagraph();
       setIsListening(false);
     } else {
       try {
+        const targetLanguage = voiceLang === 'auto' ? (navigator.language || 'en-US') : voiceLang;
         if (recognitionRef.current) {
-          recognitionRef.current.lang = voiceLang;
+          recognitionRef.current.lang = targetLanguage;
         }
+        startAudioSonagraph();
         recognitionRef.current?.start();
         setIsListening(true);
       } catch (err) {
         console.warn('Speech start error:', err);
+        stopAudioSonagraph();
       }
     }
   };
@@ -142,8 +247,9 @@ export default function ReviewInput({
               value={voiceLang}
               onChange={(e) => setVoiceLang(e.target.value)}
               disabled={isListening}
-              title="Select spoken language for speech recognition"
+              title="Select spoken language (or choose Auto-Detect)"
             >
+              <option value="auto">✨ Auto-Detect (System Default)</option>
               <option value="en-IN">🇮🇳 English (India)</option>
               <option value="en-US">🇺🇸 English (US)</option>
               <option value="en-GB">🇬🇧 English (UK)</option>
@@ -207,9 +313,38 @@ export default function ReviewInput({
           onChange={(e) => setReviewText(e.target.value)}
         />
         {isListening && (
-          <div className="listening-badge">
-            <span className="live-dot" />
-            <span>Listening to your voice... Speak now</span>
+          <div className="sonagraph-container animate-fade-in">
+            <div className="sonagraph-status">
+              <span className="live-dot" />
+              <span className="sonagraph-text">
+                {audioLevel > 14 ? '🎙️ Mic Active: Hearing Your Voice!' : '⏳ Mic Ready: Waiting for speech...'}
+              </span>
+            </div>
+
+            {/* Real-time Sonagraph Waveform Spectrum */}
+            <div className="sonagraph-wave">
+              {waveBars.map((height, i) => (
+                <span
+                  key={i}
+                  className={`wave-bar ${audioLevel > 14 ? 'wave-bar-active' : ''}`}
+                  style={{ height: `${height}px` }}
+                />
+              ))}
+            </div>
+
+            {/* Visual Volume Meter (0-100%) */}
+            <div className="audio-meter-wrap" title={`Mic Volume Level: ${audioLevel}%`}>
+              <div
+                className={`audio-meter-bar ${audioLevel > 14 ? 'meter-hearing' : ''}`}
+                style={{ width: `${Math.max(audioLevel, 8)}%` }}
+              />
+            </div>
+
+            {detectedVoiceLang && (
+              <span className="detected-lang-pill">
+                Detected: <strong>{detectedVoiceLang}</strong>
+              </span>
+            )}
           </div>
         )}
       </div>
