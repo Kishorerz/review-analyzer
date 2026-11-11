@@ -162,7 +162,7 @@ export async function requestVisionOcr(imageDataUrl, apiKey = '') {
       throw err;
     }
 
-    for (const modelName of ['gemini-2.5-flash', 'gemini-2.0-flash']) {
+    for (const modelName of ['gemini-3-flash-preview', 'gemini-flash-latest', 'gemini-2.5-flash']) {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(trimmedKey)}`;
       const res = await fetch(url, {
         method: 'POST',

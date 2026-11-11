@@ -333,10 +333,32 @@ export default function DocumentOcrPanel({
         ? Math.max(0, Math.min(100, Math.round(result.data.confidence)))
         : null;
 
+      const isLow = ocrConf !== null && ocrConf < 70;
+      if (!extractedText || isLow) {
+        // Auto-upgrade to AI Vision OCR if backend GEMINI_API_KEY or browser key is configured
+        try {
+          setStatusMsg('Low offline accuracy detected — upgrading via AI Vision OCR...');
+          setProgress(85);
+          const dataUrl = await prepareImageDataUrlForVision(imageSource);
+          const visionRes = await requestVisionOcr(dataUrl, visionApiKey);
+          const visionText = (visionRes?.text || '').trim();
+          if (visionText) {
+            setIsScanning(false);
+            setProgress(100);
+            setConfidence(98);
+            setLowAccuracyHint(false);
+            setStatusMsg('Upgraded via AI Vision OCR for exact handwriting extraction!');
+            onOcrComplete(visionText, mode, name);
+            return;
+          }
+        } catch {
+          // Fall back gracefully to local Tesseract result when no AI Vision key is available
+        }
+      }
+
       setIsScanning(false);
       setProgress(100);
       setConfidence(ocrConf);
-      const isLow = ocrConf !== null && ocrConf < 65;
       setLowAccuracyHint(isLow || !extractedText);
       setStatusMsg(
         extractedText

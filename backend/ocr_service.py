@@ -116,12 +116,32 @@ def process_document(raw_text, source_mode='document', filename='Scanned Documen
     }
 
 
+def _get_gemini_api_key(passed_key=None):
+    """Resolve Gemini API key from request, environment, or local untracked .env file."""
+    if passed_key and passed_key.strip():
+        return passed_key.strip()
+    env_key = (os.environ.get('GEMINI_API_KEY') or '').strip()
+    if env_key:
+        return env_key
+
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    if os.path.isfile(env_path):
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                stripped = line.strip()
+                if stripped and not stripped.startswith('#') and stripped.startswith('GEMINI_API_KEY='):
+                    val = stripped.split('=', 1)[1].strip().strip('"').strip("'")
+                    if val:
+                        return val
+    return ''
+
+
 def extract_text_with_vision(image_base64, mime_type='image/jpeg', api_key=None):
     """
     Uses Google Gemini Vision REST API (standard library only, no extra pip packages)
     to transcribe cursive handwriting, ruled notebook paper, and noisy documents accurately.
     """
-    key = (api_key or os.environ.get('GEMINI_API_KEY') or '').strip()
+    key = _get_gemini_api_key(api_key)
     if not key:
         raise ValueError('Missing Gemini API key. Set GEMINI_API_KEY on server or enter it in AI Vision OCR settings.')
 
@@ -153,7 +173,7 @@ def extract_text_with_vision(image_base64, mime_type='image/jpeg', api_key=None)
     }
 
     last_err = None
-    for model_name in ('gemini-2.5-flash', 'gemini-2.0-flash'):
+    for model_name in ('gemini-3-flash-preview', 'gemini-flash-latest', 'gemini-2.5-flash'):
         url = f'https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}'
         req = urllib.request.Request(
             url,
@@ -162,7 +182,7 @@ def extract_text_with_vision(image_base64, mime_type='image/jpeg', api_key=None)
             method='POST'
         )
         try:
-            with urllib.request.urlopen(req, timeout=25) as resp:
+            with urllib.request.urlopen(req, timeout=35) as resp:
                 body = json.loads(resp.read().decode('utf-8'))
             candidates = body.get('candidates') or []
             if not candidates:
