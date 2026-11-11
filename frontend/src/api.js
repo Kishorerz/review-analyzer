@@ -135,6 +135,63 @@ export async function requestOcrProcess(text, sourceMode = 'document', filename 
   }
 }
 
+export async function requestVisionOcr(imageDataUrl, apiKey = '') {
+  const [header, base64Data] = (imageDataUrl || '').split(',');
+  const mimeMatch = (header || '').match(/data:([^;]+)/);
+  const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+  const cleanB64 = base64Data || imageDataUrl || '';
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/ocr-vision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_base64: cleanB64,
+        mime_type: mimeType,
+        api_key: apiKey
+      })
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok || !json.success) {
+      throw new Error(json.error || `Server returned HTTP ${response.status}`);
+    }
+    return { success: true, text: json.data?.text || '' };
+  } catch (err) {
+    const trimmedKey = (apiKey || '').trim();
+    if (!trimmedKey || !/Failed to fetch|NetworkError/i.test(err.message || '')) {
+      throw err;
+    }
+
+    for (const modelName of ['gemini-2.5-flash', 'gemini-2.0-flash']) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(trimmedKey)}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              {
+                text: 'Transcribe ALL visible handwritten or printed text in this image word-for-word. Preserve exact capitalization, punctuation, and line breaks. Ignore ruled notebook lines or shadows. Output ONLY the extracted text with no commentary.'
+              },
+              { inline_data: { mime_type: mimeType, data: cleanB64 } }
+            ]
+          }],
+          generationConfig: { temperature: 0.0 }
+        })
+      });
+      if (res.ok) {
+        const body = await res.json();
+        const parts = body?.candidates?.[0]?.content?.parts || [];
+        return {
+          success: true,
+          text: parts.map((p) => p.text || '').join('\n').trim()
+        };
+      }
+    }
+    throw new Error('AI Vision request failed. Check your Gemini API key.');
+  }
+}
+
 export async function requestRpaWorkflow(text, sourceMode = 'document', filename = 'Input Text') {
   try {
     const response = await fetch(`${API_BASE_URL}/api/rpa-run`, {

@@ -1,8 +1,68 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createWorker, PSM } from 'tesseract.js';
-import { Upload, PenTool, Eraser, ScanText, FileCheck, Loader2, RefreshCw, X } from 'lucide-react';
+import { Upload, PenTool, Eraser, ScanText, FileCheck, Loader2, RefreshCw, Sparkles, KeyRound, X } from 'lucide-react';
+import { requestVisionOcr } from '../api';
 
-// Preprocess image in an offscreen canvas (upscale, pad, auto-invert dark mode, contrast/Otsu B&W)
+// Convert any uploaded blob URL / data URL into a clean JPEG data URL for AI Vision OCR
+function prepareImageDataUrlForVision(imageSource) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const srcW = img.naturalWidth || img.width;
+      const srcH = img.naturalHeight || img.height;
+      const maxDim = 1600;
+      const scale = Math.max(srcW, srcH) > maxDim ? maxDim / Math.max(srcW, srcH) : 1;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(srcW * scale);
+      canvas.height = Math.round(srcH * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.92));
+    };
+    img.onerror = reject;
+    img.src = imageSource;
+  });
+}
+
+// Compute local illumination normalization in O(W*H) via 2D Integral Image to strip shadows & faint ruled lines
+function normalizeLocalIllumination(grays, w, h, radius = 26) {
+  const stride = w + 1;
+  const integral = new Float64Array(stride * (h + 1));
+
+  for (let y = 0; y < h; y += 1) {
+    let rowSum = 0;
+    const rowOff = y * w;
+    const iCurr = (y + 1) * stride;
+    const iPrev = y * stride;
+    for (let x = 0; x < w; x += 1) {
+      rowSum += grays[rowOff + x];
+      integral[iCurr + x + 1] = integral[iPrev + x + 1] + rowSum;
+    }
+  }
+
+  const normalized = new Uint8ClampedArray(w * h);
+  for (let y = 0; y < h; y += 1) {
+    const y0 = Math.max(0, y - radius);
+    const y1 = Math.min(h - 1, y + radius);
+    const offY0 = y0 * stride;
+    const offY1 = (y1 + 1) * stride;
+    for (let x = 0; x < w; x += 1) {
+      const x0 = Math.max(0, x - radius);
+      const x1 = Math.min(w - 1, x + radius);
+      const area = (x1 - x0 + 1) * (y1 - y0 + 1);
+      const sum = integral[offY1 + x1 + 1] - integral[offY0 + x1 + 1] - integral[offY1 + x0] + integral[offY0 + x0];
+      const localMean = Math.max(1, sum / area);
+      const idx = y * w + x;
+      normalized[idx] = Math.min(255, Math.round((grays[idx] / localMean) * 245));
+    }
+  }
+  return normalized;
+}
+
+// Preprocess image in an offscreen canvas (upscale, pad, auto-invert dark mode, local shadow removal / Otsu B&W)
 function preprocessImageForOcr(imageSource, enhanceMode = 'auto', isHandwritten = false) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -15,20 +75,19 @@ function preprocessImageForOcr(imageSource, enhanceMode = 'auto', isHandwritten 
         return;
       }
 
-      // Upscale small images so Tesseract LSTM has clear glyph detail (cap at 2400px)
       const targetMinWidth = isHandwritten ? Math.max(srcW * 2, 1400) : 1400;
       let scale = srcW < targetMinWidth ? targetMinWidth / srcW : 1;
       if (isHandwritten) {
         scale = Math.max(scale, 2);
       }
       const maxDim = Math.max(srcW * scale, srcH * scale);
-      if (maxDim > 2400) {
-        scale = (2400 / Math.max(srcW, srcH));
+      if (maxDim > 2200) {
+        scale = 2200 / Math.max(srcW, srcH);
       }
 
       const scaledW = Math.round(srcW * scale);
       const scaledH = Math.round(srcH * scale);
-      const pad = 48; // White quiet-zone border improves edge character detection
+      const pad = 48;
 
       const canvas = document.createElement('canvas');
       canvas.width = scaledW + pad * 2;
@@ -58,30 +117,27 @@ function preprocessImageForOcr(imageSource, enhanceMode = 'auto', isHandwritten 
         lumSum += g;
       }
 
-      // Auto-invert dark backgrounds (e.g., dark-mode UI screenshots with light text)
-      const avgLum = lumSum / Math.max(1, totalPixels);
-      const shouldInvert = avgLum < 120;
+      const shouldInvert = lumSum / Math.max(1, totalPixels) < 120;
+      if (shouldInvert) {
+        for (let p = 0; p < totalPixels; p += 1) {
+          grays[p] = 255 - grays[p];
+        }
+      }
+
+      const normalized = normalizeLocalIllumination(grays, scaledW, scaledH, 28);
 
       const histogram = new Array(256).fill(0);
-      let minG = 255;
-      let maxG = 0;
-
       for (let p = 0; p < totalPixels; p += 1) {
-        const g = shouldInvert ? 255 - grays[p] : grays[p];
-        grays[p] = g;
-        histogram[g] += 1;
-        if (g < minG) minG = g;
-        if (g > maxG) maxG = g;
+        histogram[normalized[p]] += 1;
       }
 
       if (enhanceMode === 'bw') {
-        // Compute Otsu's optimal binarization threshold for noisy photos/receipts
         let sumAll = 0;
         for (let t = 0; t < 256; t += 1) sumAll += t * histogram[t];
         let sumBg = 0;
         let weightBg = 0;
         let maxVariance = -1;
-        let threshold = 140;
+        let threshold = 165;
 
         for (let t = 0; t < 256; t += 1) {
           weightBg += histogram[t];
@@ -98,21 +154,18 @@ function preprocessImageForOcr(imageSource, enhanceMode = 'auto', isHandwritten 
           }
         }
 
+        const safeThreshold = Math.min(threshold, 178);
         for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
-          const val = grays[p] <= threshold ? 0 : 255;
+          const val = normalized[p] <= safeThreshold ? 0 : 255;
           data[i] = val;
           data[i + 1] = val;
           data[i + 2] = val;
           data[i + 3] = 255;
         }
       } else {
-        // Contrast stretch preserves smooth glyph edges for Tesseract LSTM
-        const range = Math.max(1, maxG - minG);
         for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
-          let stretched = ((grays[p] - minG) / range) * 255;
-          // Push near-white background to pure white and darken midtones slightly
-          stretched = stretched > 215 ? 255 : Math.max(0, Math.min(255, (stretched - 128) * 1.35 + 128));
-          const val = Math.round(stretched);
+          const v = normalized[p];
+          const val = v > 178 ? 255 : Math.max(0, Math.min(255, Math.round((v - 55) * 1.45)));
           data[i] = val;
           data[i + 1] = val;
           data[i + 2] = val;
@@ -133,11 +186,14 @@ export default function DocumentOcrPanel({
   onClose
 }) {
   const [ocrMode, setOcrMode] = useState('upload'); // 'upload' | 'handwritten'
+  const [ocrEngine, setOcrEngine] = useState('tesseract'); // 'tesseract' | 'vision'
+  const [visionApiKey, setVisionApiKey] = useState(() => localStorage.getItem('gemini_ocr_key') || '');
   const [enhanceMode, setEnhanceMode] = useState('auto'); // 'auto' | 'bw' | 'original'
   const [isScanning, setIsScanning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusMsg, setStatusMsg] = useState('');
   const [confidence, setConfidence] = useState(null);
+  const [lowAccuracyHint, setLowAccuracyHint] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [fileName, setFileName] = useState('');
 
@@ -204,14 +260,45 @@ export default function DocumentOcrPanel({
     isDrawingRef.current = false;
   };
 
-  // Run Tesseract.js OCR with image preprocessing & tuned worker parameters
-  const runOcrEngine = async (imageSource, mode, name, overrideEnhance) => {
+  const handleVisionKeyChange = (val) => {
+    setVisionApiKey(val);
+    localStorage.setItem('gemini_ocr_key', val);
+  };
+
+  // Run OCR via either AI Vision (best for cursive/lined paper) or Local Tesseract.js
+  const runOcrEngine = async (imageSource, mode, name, overrideEnhance, overrideEngine) => {
+    const activeEngine = overrideEngine || ocrEngine;
     const activeEnhance = overrideEnhance || enhanceMode;
     setIsScanning(true);
     setConfidence(null);
-    setProgress(5);
-    setStatusMsg('Enhancing image for OCR...');
+    setLowAccuracyHint(false);
+    setProgress(10);
 
+    if (activeEngine === 'vision') {
+      setStatusMsg('Transcribing with AI Vision OCR...');
+      try {
+        setProgress(35);
+        const dataUrl = await prepareImageDataUrlForVision(imageSource);
+        setProgress(65);
+        const res = await requestVisionOcr(dataUrl, visionApiKey);
+        const extractedText = (res?.text || '').trim();
+        setIsScanning(false);
+        setProgress(100);
+        setConfidence(extractedText ? 98 : null);
+        setStatusMsg(extractedText ? 'AI Vision extracted handwriting cleanly!' : 'No readable text found in image.');
+        if (extractedText) {
+          onOcrComplete(extractedText, mode, name);
+        }
+      } catch (err) {
+        console.error('AI Vision OCR Error:', err);
+        setIsScanning(false);
+        setProgress(0);
+        setStatusMsg(err.message || 'AI Vision OCR failed. Check your Gemini API key.');
+      }
+      return;
+    }
+
+    setStatusMsg('Removing shadows & enhancing image...');
     let worker = null;
     try {
       const preparedSource = await preprocessImageForOcr(
@@ -221,7 +308,7 @@ export default function DocumentOcrPanel({
       );
 
       setProgress(15);
-      setStatusMsg('Loading OCR Engine...');
+      setStatusMsg('Loading Offline OCR Engine...');
 
       worker = await createWorker('eng', 1, {
         logger: (m) => {
@@ -249,10 +336,12 @@ export default function DocumentOcrPanel({
       setIsScanning(false);
       setProgress(100);
       setConfidence(ocrConf);
+      const isLow = ocrConf !== null && ocrConf < 65;
+      setLowAccuracyHint(isLow || !extractedText);
       setStatusMsg(
         extractedText
-          ? 'Text extracted cleanly!'
-          : 'No clear text found. Try switching OCR Mode (e.g. High-Contrast B&W) or uploading a sharper crop.'
+          ? (isLow ? 'Extracted with low confidence (likely cursive or lined paper).' : 'Text extracted cleanly!')
+          : 'No clear printed text found. Cursive handwriting requires AI Vision OCR.'
       );
 
       if (extractedText) {
@@ -319,9 +408,17 @@ export default function DocumentOcrPanel({
     runOcrEngine(imageUrl, 'document', file.name);
   };
 
+  const handleEngineChange = (newEngine) => {
+    setOcrEngine(newEngine);
+    setLowAccuracyHint(false);
+    if (ocrMode === 'upload' && previewUrl && !isScanning && (newEngine === 'tesseract' || visionApiKey.trim())) {
+      runOcrEngine(previewUrl, 'document', fileName || 'Uploaded Image', enhanceMode, newEngine);
+    }
+  };
+
   const handleEnhanceChange = (newMode) => {
     setEnhanceMode(newMode);
-    if (ocrMode === 'upload' && previewUrl && !isScanning) {
+    if (ocrMode === 'upload' && previewUrl && !isScanning && ocrEngine === 'tesseract') {
       runOcrEngine(previewUrl, 'document', fileName || 'Uploaded Image', newMode);
     }
   };
@@ -364,39 +461,78 @@ export default function DocumentOcrPanel({
         </button>
       </div>
 
-      {/* Image Preprocessing Mode Selector */}
-      <div className="ocr-enhance-bar">
-        <span className="ocr-enhance-label">OCR Image Filter:</span>
+      {/* OCR Engine Toggle: Offline Printed vs AI Vision Handwriting */}
+      <div className="ocr-engine-bar">
+        <span className="ocr-enhance-label">OCR Engine:</span>
         <div className="ocr-enhance-pills">
           <button
             type="button"
-            className={`ocr-enhance-pill ${enhanceMode === 'auto' ? 'active' : ''}`}
-            onClick={() => handleEnhanceChange('auto')}
+            className={`ocr-enhance-pill ${ocrEngine === 'tesseract' ? 'active' : ''}`}
+            onClick={() => handleEngineChange('tesseract')}
             disabled={isScanning}
-            title="Upscales image, auto-inverts dark screenshots, and stretches contrast"
           >
-            Auto Enhance
+            Standard OCR (Offline / Printed)
           </button>
           <button
             type="button"
-            className={`ocr-enhance-pill ${enhanceMode === 'bw' ? 'active' : ''}`}
-            onClick={() => handleEnhanceChange('bw')}
+            className={`ocr-enhance-pill ${ocrEngine === 'vision' ? 'active' : ''}`}
+            onClick={() => handleEngineChange('vision')}
             disabled={isScanning}
-            title="Otsu high-contrast Black & White threshold for photos of paper or receipts"
           >
-            High-Contrast B&amp;W
-          </button>
-          <button
-            type="button"
-            className={`ocr-enhance-pill ${enhanceMode === 'original' ? 'active' : ''}`}
-            onClick={() => handleEnhanceChange('original')}
-            disabled={isScanning}
-            title="Minimal padding without altering image colors"
-          >
-            Original
+            <Sparkles size={11} style={{ display: 'inline', marginRight: 4 }} />
+            AI Vision OCR (Cursive &amp; Handwriting)
           </button>
         </div>
       </div>
+
+      {ocrEngine === 'vision' && (
+        <div className="ocr-key-row">
+          <KeyRound size={14} />
+          <input
+            type="password"
+            className="ocr-key-input"
+            placeholder="Paste free Gemini API Key for Cursive/Handwriting (saved locally, optional if server GEMINI_API_KEY is set)"
+            value={visionApiKey}
+            onChange={(e) => handleVisionKeyChange(e.target.value)}
+          />
+        </div>
+      )}
+
+      {/* Image Preprocessing Mode Selector (only needed for Standard Tesseract OCR) */}
+      {ocrEngine === 'tesseract' && (
+        <div className="ocr-enhance-bar">
+          <span className="ocr-enhance-label">Image Filter:</span>
+          <div className="ocr-enhance-pills">
+            <button
+              type="button"
+              className={`ocr-enhance-pill ${enhanceMode === 'auto' ? 'active' : ''}`}
+              onClick={() => handleEnhanceChange('auto')}
+              disabled={isScanning}
+              title="Removes camera shadows, auto-inverts dark screenshots, and suppresses ruled paper lines"
+            >
+              Auto Enhance (Shadow Removal)
+            </button>
+            <button
+              type="button"
+              className={`ocr-enhance-pill ${enhanceMode === 'bw' ? 'active' : ''}`}
+              onClick={() => handleEnhanceChange('bw')}
+              disabled={isScanning}
+              title="Adaptive Otsu Black & White threshold for photos of paper or receipts"
+            >
+              High-Contrast B&amp;W
+            </button>
+            <button
+              type="button"
+              className={`ocr-enhance-pill ${enhanceMode === 'original' ? 'active' : ''}`}
+              onClick={() => handleEnhanceChange('original')}
+              disabled={isScanning}
+              title="Minimal padding without altering image colors"
+            >
+              Original
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Mode 1: Upload Printed Document, Image, or Handwritten Photo */}
       {ocrMode === 'upload' && (
@@ -493,6 +629,11 @@ export default function DocumentOcrPanel({
               </span>
             )}
           </div>
+          {!isScanning && lowAccuracyHint && ocrEngine === 'tesseract' && (
+            <div className="ocr-low-hint">
+              Tesseract only reads printed fonts reliably. For cursive or lined-paper handwriting, switch to <strong>AI Vision OCR</strong> above.
+            </div>
+          )}
           {isScanning && (
             <div className="ocr-progress-track">
               <div className="ocr-progress-fill" style={{ width: `${progress}%` }} />

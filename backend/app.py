@@ -22,7 +22,7 @@ from emotion_analysis import analyze_emotion
 from intent_analysis import analyze_intent
 from similarity_service import compute_similarity
 from translation_service import translate_text
-from ocr_service import process_document
+from ocr_service import process_document, extract_text_with_vision
 from rpa_service import run_rpa_workflow
 from nlp_engine import analyze_all
 
@@ -149,6 +149,24 @@ def ocr_process():
     filename = data.get('filename', 'Scanned Document')
     result = process_document(text, source_mode=source_mode, filename=filename)
     return jsonify({'success': True, 'data': result})
+
+@app.route('/ocr-vision', methods=['POST', 'OPTIONS'])
+@app.route('/api/ocr-vision', methods=['POST', 'OPTIONS'])
+def ocr_vision():
+    """AI Vision OCR Endpoint for Cursive & Complex Handwriting -> ocr_service.py"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    data = request.get_json(silent=True) or {}
+    image_base64 = data.get('image_base64', '')
+    mime_type = data.get('mime_type', 'image/jpeg')
+    api_key = data.get('api_key', '')
+    try:
+        extracted_text = extract_text_with_vision(image_base64, mime_type=mime_type, api_key=api_key)
+        return jsonify({'success': True, 'data': {'text': extracted_text}})
+    except ValueError as err:
+        return jsonify({'success': False, 'error': str(err)}), 400
+    except Exception as err:
+        return jsonify({'success': False, 'error': str(err)}), 502
 
 @app.route('/rpa-run', methods=['POST', 'OPTIONS'])
 @app.route('/api/rpa-run', methods=['POST', 'OPTIONS'])

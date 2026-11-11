@@ -12,7 +12,11 @@ Performs:
 - Key field extraction (emails, order IDs, prices/amounts, dates)
 """
 
+import os
 import re
+import json
+import urllib.request
+import urllib.error
 
 
 def clean_ocr_text(raw_text):
@@ -110,3 +114,69 @@ def process_document(raw_text, source_mode='document', filename='Scanned Documen
         'extracted_fields': fields,
         'status': 'Processed Successfully'
     }
+
+
+def extract_text_with_vision(image_base64, mime_type='image/jpeg', api_key=None):
+    """
+    Uses Google Gemini Vision REST API (standard library only, no extra pip packages)
+    to transcribe cursive handwriting, ruled notebook paper, and noisy documents accurately.
+    """
+    key = (api_key or os.environ.get('GEMINI_API_KEY') or '').strip()
+    if not key:
+        raise ValueError('Missing Gemini API key. Set GEMINI_API_KEY on server or enter it in AI Vision OCR settings.')
+
+    clean_b64 = (image_base64 or '').split(',')[-1].strip()
+    if not clean_b64:
+        raise ValueError('Image payload is empty.')
+
+    payload = {
+        'contents': [{
+            'parts': [
+                {
+                    'text': (
+                        'Transcribe ALL visible handwritten or printed text in this image word-for-word. '
+                        'Preserve exact capitalization, punctuation, and line breaks. '
+                        'Ignore ruled notebook lines or shadows. Output ONLY the extracted text with no commentary.'
+                    )
+                },
+                {
+                    'inline_data': {
+                        'mime_type': mime_type or 'image/jpeg',
+                        'data': clean_b64
+                    }
+                }
+            ]
+        }],
+        'generationConfig': {
+            'temperature': 0.0
+        }
+    }
+
+    last_err = None
+    for model_name in ('gemini-2.5-flash', 'gemini-2.0-flash'):
+        url = f'https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}'
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode('utf-8'),
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                body = json.loads(resp.read().decode('utf-8'))
+            candidates = body.get('candidates') or []
+            if not candidates:
+                raise RuntimeError('AI Vision returned no candidates.')
+            parts = (candidates[0].get('content') or {}).get('parts') or []
+            extracted = '\n'.join(p.get('text', '') for p in parts if p.get('text')).strip()
+            return extracted
+        except urllib.error.HTTPError as err:
+            err_body = err.read().decode('utf-8', errors='ignore')
+            last_err = f'Gemini API HTTP {err.code}: {err_body[:240]}'
+            if err.code in (400, 401, 403):
+                # Key/request error won't be fixed by trying another model unless model is not found (404)
+                break
+        except Exception as err:
+            last_err = str(err)
+
+    raise RuntimeError(last_err or 'AI Vision OCR request failed.')
