@@ -1831,6 +1831,72 @@ body {
   gap: 6px;
   font-size: 0.84rem;
   color: #cbd5e1;
+  flex: 1;
+}
+
+.ocr-rescan-btn {
+  margin-left: auto;
+}
+
+.ocr-enhance-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.ocr-enhance-label {
+  font-size: 0.76rem;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.ocr-enhance-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ocr-enhance-pill {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--bg-card-border);
+  color: #94a3b8;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.ocr-enhance-pill:hover:not(:disabled) {
+  color: #fff;
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.ocr-enhance-pill.active {
+  background: rgba(99, 102, 241, 0.25);
+  border-color: var(--primary-500);
+  color: #e0e7ff;
+}
+
+.ocr-confidence-badge {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.ocr-confidence-badge.good {
+  background: rgba(16, 185, 129, 0.16);
+  color: #34d399;
+}
+
+.ocr-confidence-badge.low {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
 }
 
 .handwriting-area {
@@ -1846,8 +1912,8 @@ body {
 
 .handwriting-canvas {
   width: 100%;
-  max-width: 680px;
-  height: 170px;
+  max-width: 800px;
+  height: 220px;
   background: #ffffff;
   border-radius: var(--radius-sm);
   border: 2px solid rgba(99, 102, 241, 0.45);

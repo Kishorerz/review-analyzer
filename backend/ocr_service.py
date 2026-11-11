@@ -17,18 +17,23 @@ import re
 
 def clean_ocr_text(raw_text):
     """
-    Cleans common OCR errors such as broken line wraps, extra spaces,
-    and stray punctuation artifacts while preserving readable sentences.
+    Cleans common OCR errors (hyphenated line wraps, stray noise characters,
+    and excess spaces) while preserving original line breaks accurately.
     """
     if not raw_text:
         return ''
 
-    # Replace multiple newlines with a clean space or period break
-    text = re.sub(r'\r\n|\r|\n', ' ', raw_text)
-    # Collapse multiple spaces into one
-    text = re.sub(r'\s+', ' ', text)
-    # Remove isolated stray symbols commonly produced by OCR (like | or ~)
-    text = re.sub(r'[|~`^_]+', '', text)
+    # Normalize line endings
+    text = raw_text.replace('\r\n', '\n').replace('\r', '\n')
+    # Rejoin words split across lines with a trailing hyphen (e.g. "deliv-\nery" -> "delivery")
+    text = re.sub(r'([A-Za-z])-\s*\n\s*([A-Za-z])', r'\1\2', text)
+    # Remove isolated OCR border artifacts like repeated pipes or tildes
+    text = re.sub(r'[|~`^]+', '', text)
+    # Clean extra horizontal spaces per line while preserving line breaks
+    cleaned_lines = [re.sub(r'[ \t]+', ' ', line).strip() for line in text.split('\n')]
+    text = '\n'.join(cleaned_lines)
+    # Collapse 3+ consecutive blank lines into a single blank line
+    text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
 
 

@@ -1,15 +1,143 @@
 import React, { useState, useRef, useEffect } from 'react';
-import Tesseract from 'tesseract.js';
-import { Upload, PenTool, Eraser, ScanText, FileCheck, Loader2, X } from 'lucide-react';
+import { createWorker, PSM } from 'tesseract.js';
+import { Upload, PenTool, Eraser, ScanText, FileCheck, Loader2, RefreshCw, X } from 'lucide-react';
+
+// Preprocess image in an offscreen canvas (upscale, pad, auto-invert dark mode, contrast/Otsu B&W)
+function preprocessImageForOcr(imageSource, enhanceMode = 'auto', isHandwritten = false) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const srcW = img.naturalWidth || img.width;
+      const srcH = img.naturalHeight || img.height;
+      if (!srcW || !srcH) {
+        resolve(imageSource);
+        return;
+      }
+
+      // Upscale small images so Tesseract LSTM has clear glyph detail (cap at 2400px)
+      const targetMinWidth = isHandwritten ? Math.max(srcW * 2, 1400) : 1400;
+      let scale = srcW < targetMinWidth ? targetMinWidth / srcW : 1;
+      if (isHandwritten) {
+        scale = Math.max(scale, 2);
+      }
+      const maxDim = Math.max(srcW * scale, srcH * scale);
+      if (maxDim > 2400) {
+        scale = (2400 / Math.max(srcW, srcH));
+      }
+
+      const scaledW = Math.round(srcW * scale);
+      const scaledH = Math.round(srcH * scale);
+      const pad = 48; // White quiet-zone border improves edge character detection
+
+      const canvas = document.createElement('canvas');
+      canvas.width = scaledW + pad * 2;
+      canvas.height = scaledH + pad * 2;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, pad, pad, scaledW, scaledH);
+
+      if (enhanceMode === 'original') {
+        resolve(canvas.toDataURL('image/png'));
+        return;
+      }
+
+      const imageData = ctx.getImageData(pad, pad, scaledW, scaledH);
+      const data = imageData.data;
+      const totalPixels = scaledW * scaledH;
+      const grays = new Uint8ClampedArray(totalPixels);
+      let lumSum = 0;
+
+      for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+        const g = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+        grays[p] = g;
+        lumSum += g;
+      }
+
+      // Auto-invert dark backgrounds (e.g., dark-mode UI screenshots with light text)
+      const avgLum = lumSum / Math.max(1, totalPixels);
+      const shouldInvert = avgLum < 120;
+
+      const histogram = new Array(256).fill(0);
+      let minG = 255;
+      let maxG = 0;
+
+      for (let p = 0; p < totalPixels; p += 1) {
+        const g = shouldInvert ? 255 - grays[p] : grays[p];
+        grays[p] = g;
+        histogram[g] += 1;
+        if (g < minG) minG = g;
+        if (g > maxG) maxG = g;
+      }
+
+      if (enhanceMode === 'bw') {
+        // Compute Otsu's optimal binarization threshold for noisy photos/receipts
+        let sumAll = 0;
+        for (let t = 0; t < 256; t += 1) sumAll += t * histogram[t];
+        let sumBg = 0;
+        let weightBg = 0;
+        let maxVariance = -1;
+        let threshold = 140;
+
+        for (let t = 0; t < 256; t += 1) {
+          weightBg += histogram[t];
+          if (weightBg === 0) continue;
+          const weightFg = totalPixels - weightBg;
+          if (weightFg === 0) break;
+          sumBg += t * histogram[t];
+          const meanBg = sumBg / weightBg;
+          const meanFg = (sumAll - sumBg) / weightFg;
+          const betweenVar = weightBg * weightFg * (meanBg - meanFg) * (meanBg - meanFg);
+          if (betweenVar > maxVariance) {
+            maxVariance = betweenVar;
+            threshold = t;
+          }
+        }
+
+        for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+          const val = grays[p] <= threshold ? 0 : 255;
+          data[i] = val;
+          data[i + 1] = val;
+          data[i + 2] = val;
+          data[i + 3] = 255;
+        }
+      } else {
+        // Contrast stretch preserves smooth glyph edges for Tesseract LSTM
+        const range = Math.max(1, maxG - minG);
+        for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+          let stretched = ((grays[p] - minG) / range) * 255;
+          // Push near-white background to pure white and darken midtones slightly
+          stretched = stretched > 215 ? 255 : Math.max(0, Math.min(255, (stretched - 128) * 1.35 + 128));
+          const val = Math.round(stretched);
+          data[i] = val;
+          data[i + 1] = val;
+          data[i + 2] = val;
+          data[i + 3] = 255;
+        }
+      }
+
+      ctx.putImageData(imageData, pad, pad);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = (err) => reject(err);
+    img.src = imageSource;
+  });
+}
 
 export default function DocumentOcrPanel({
   onOcrComplete,
   onClose
 }) {
   const [ocrMode, setOcrMode] = useState('upload'); // 'upload' | 'handwritten'
+  const [enhanceMode, setEnhanceMode] = useState('auto'); // 'auto' | 'bw' | 'original'
   const [isScanning, setIsScanning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusMsg, setStatusMsg] = useState('');
+  const [confidence, setConfidence] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [fileName, setFileName] = useState('');
 
@@ -25,7 +153,7 @@ export default function DocumentOcrPanel({
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 6;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
   };
@@ -76,28 +204,56 @@ export default function DocumentOcrPanel({
     isDrawingRef.current = false;
   };
 
-  // Run Tesseract.js OCR on an image source (File, URL, or Canvas)
-  const runOcrEngine = async (imageSource, mode, name) => {
+  // Run Tesseract.js OCR with image preprocessing & tuned worker parameters
+  const runOcrEngine = async (imageSource, mode, name, overrideEnhance) => {
+    const activeEnhance = overrideEnhance || enhanceMode;
     setIsScanning(true);
+    setConfidence(null);
     setProgress(5);
-    setStatusMsg('Initializing OCR Engine...');
+    setStatusMsg('Enhancing image for OCR...');
 
+    let worker = null;
     try {
-      const result = await Tesseract.recognize(imageSource, 'eng', {
+      const preparedSource = await preprocessImageForOcr(
+        imageSource,
+        activeEnhance,
+        mode === 'handwritten'
+      );
+
+      setProgress(15);
+      setStatusMsg('Loading OCR Engine...');
+
+      worker = await createWorker('eng', 1, {
         logger: (m) => {
           if (m.status === 'recognizing text') {
-            setProgress(Math.round(m.progress * 100));
-            setStatusMsg(`Reading text (${Math.round(m.progress * 100)}%)...`);
+            const pct = Math.max(20, Math.round(m.progress * 100));
+            setProgress(pct);
+            setStatusMsg(`Reading text (${pct}%)...`);
           } else {
             setStatusMsg(m.status);
           }
         }
       });
 
+      await worker.setParameters({
+        tessedit_pageseg_mode: mode === 'handwritten' ? (PSM?.SINGLE_BLOCK || '6') : (PSM?.AUTO || '3'),
+        preserve_interword_spaces: '1'
+      });
+
+      const result = await worker.recognize(preparedSource);
       const extractedText = (result?.data?.text || '').trim();
+      const ocrConf = typeof result?.data?.confidence === 'number'
+        ? Math.max(0, Math.min(100, Math.round(result.data.confidence)))
+        : null;
+
       setIsScanning(false);
       setProgress(100);
-      setStatusMsg(extractedText ? 'Text extracted successfully!' : 'No clear text found. Try a clearer image or write larger.');
+      setConfidence(ocrConf);
+      setStatusMsg(
+        extractedText
+          ? 'Text extracted cleanly!'
+          : 'No clear text found. Try switching OCR Mode (e.g. High-Contrast B&W) or uploading a sharper crop.'
+      );
 
       if (extractedText) {
         onOcrComplete(extractedText, mode, name);
@@ -105,7 +261,16 @@ export default function DocumentOcrPanel({
     } catch (err) {
       console.error('OCR Error:', err);
       setIsScanning(false);
-      setStatusMsg('OCR failed. Please try a clearer image.');
+      setConfidence(null);
+      setStatusMsg('OCR failed. Please try a clearer image (PNG/JPG).');
+    } finally {
+      if (worker) {
+        try {
+          await worker.terminate();
+        } catch {
+          // Ignore worker cleanup errors
+        }
+      }
     }
   };
 
@@ -114,7 +279,16 @@ export default function DocumentOcrPanel({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Reset input value so re-uploading the same file triggers onChange
+    e.target.value = '';
     setFileName(file.name);
+    setConfidence(null);
+
+    if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
+      setPreviewUrl('');
+      setStatusMsg('PDF files are binary documents. Please upload a screenshot/image (PNG, JPG) or a .TXT/.CSV file.');
+      return;
+    }
 
     // If plain text / CSV / Markdown document, read directly without needing OCR
     if (file.type === 'text/plain' || /\.(txt|csv|md|log)$/i.test(file.name)) {
@@ -129,10 +303,27 @@ export default function DocumentOcrPanel({
       return;
     }
 
+    if (!file.type.startsWith('image/') && !/\.(png|jpe?g|webp|bmp|gif|tiff?)$/i.test(file.name)) {
+      setPreviewUrl('');
+      setStatusMsg('Unsupported file format. Please upload an image (PNG, JPG, WEBP) or .TXT/.CSV/.MD file.');
+      return;
+    }
+
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
     // If image (scanned document, receipt, or photo of handwritten note) -> Run OCR
     const imageUrl = URL.createObjectURL(file);
     setPreviewUrl(imageUrl);
     runOcrEngine(imageUrl, 'document', file.name);
+  };
+
+  const handleEnhanceChange = (newMode) => {
+    setEnhanceMode(newMode);
+    if (ocrMode === 'upload' && previewUrl && !isScanning) {
+      runOcrEngine(previewUrl, 'document', fileName || 'Uploaded Image', newMode);
+    }
   };
 
   // Scan Handwritten Canvas
@@ -173,6 +364,40 @@ export default function DocumentOcrPanel({
         </button>
       </div>
 
+      {/* Image Preprocessing Mode Selector */}
+      <div className="ocr-enhance-bar">
+        <span className="ocr-enhance-label">OCR Image Filter:</span>
+        <div className="ocr-enhance-pills">
+          <button
+            type="button"
+            className={`ocr-enhance-pill ${enhanceMode === 'auto' ? 'active' : ''}`}
+            onClick={() => handleEnhanceChange('auto')}
+            disabled={isScanning}
+            title="Upscales image, auto-inverts dark screenshots, and stretches contrast"
+          >
+            Auto Enhance
+          </button>
+          <button
+            type="button"
+            className={`ocr-enhance-pill ${enhanceMode === 'bw' ? 'active' : ''}`}
+            onClick={() => handleEnhanceChange('bw')}
+            disabled={isScanning}
+            title="Otsu high-contrast Black & White threshold for photos of paper or receipts"
+          >
+            High-Contrast B&amp;W
+          </button>
+          <button
+            type="button"
+            className={`ocr-enhance-pill ${enhanceMode === 'original' ? 'active' : ''}`}
+            onClick={() => handleEnhanceChange('original')}
+            disabled={isScanning}
+            title="Minimal padding without altering image colors"
+          >
+            Original
+          </button>
+        </div>
+      </div>
+
       {/* Mode 1: Upload Printed Document, Image, or Handwritten Photo */}
       {ocrMode === 'upload' && (
         <div className="ocr-upload-area">
@@ -187,7 +412,7 @@ export default function DocumentOcrPanel({
             <Upload size={24} className="text-muted" />
             <div className="ocr-drop-text">
               <strong>Click to Upload Document or Handwritten Photo</strong>
-              <span>Supports Images (PNG, JPG, Receipts, Handwritten Notes) & Text Docs (.TXT, .CSV)</span>
+              <span>Supports Images (PNG, JPG, Receipts, Handwritten Notes) &amp; Text Docs (.TXT, .CSV)</span>
             </div>
           </label>
 
@@ -198,6 +423,15 @@ export default function DocumentOcrPanel({
                 <FileCheck size={16} className="text-emerald" />
                 <span>{fileName}</span>
               </div>
+              <button
+                type="button"
+                className="text-action-btn ocr-rescan-btn"
+                onClick={() => runOcrEngine(previewUrl, 'document', fileName || 'Uploaded Image')}
+                disabled={isScanning}
+                title="Re-run OCR with the selected filter"
+              >
+                <RefreshCw size={13} /> Re-scan
+              </button>
             </div>
           )}
         </div>
@@ -207,12 +441,12 @@ export default function DocumentOcrPanel({
       {ocrMode === 'handwritten' && (
         <div className="handwriting-area">
           <p className="handwriting-hint">
-            Write clearly in dark strokes below (works best with neat block letters), then click <strong>Scan Handwriting</strong>:
+            Write large, neat block letters separated cleanly below, then click <strong>Scan Handwriting</strong>:
           </p>
           <canvas
             ref={canvasRef}
-            width={680}
-            height={170}
+            width={800}
+            height={220}
             className="handwriting-canvas"
             onMouseDown={startDrawing}
             onMouseMove={draw}
@@ -253,6 +487,11 @@ export default function DocumentOcrPanel({
           <div className="ocr-status-text">
             {isScanning && <Loader2 size={14} className="spin-icon" />}
             <span>{statusMsg}</span>
+            {!isScanning && confidence !== null && (
+              <span className={`ocr-confidence-badge ${confidence >= 70 ? 'good' : 'low'}`}>
+                Confidence: {confidence}%
+              </span>
+            )}
           </div>
           {isScanning && (
             <div className="ocr-progress-track">

@@ -100,7 +100,15 @@ export async function requestOcrProcess(text, sourceMode = 'document', filename 
     return { success: true, data: json.data, isLocalFallback: false };
   } catch (err) {
     console.warn('OCR process fallback:', err.message);
-    const cleaned = (text || '').replace(/\s+/g, ' ').trim();
+    const cleaned = (text || '')
+      .replace(/\r\n|\r/g, '\n')
+      .replace(/([A-Za-z])-\s*\n\s*([A-Za-z])/g, '$1$2')
+      .replace(/[|~`^]+/g, '')
+      .split('\n')
+      .map((line) => line.replace(/[ \t]+/g, ' ').trim())
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
     const emails = cleaned.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
     const amounts = cleaned.match(/(?:\$|₹|€|£|Rs\.?\s?)\d+(?:,\d{3})*(?:\.\d{1,2})?/g) || [];
     const dates = cleaned.match(/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/g) || [];
