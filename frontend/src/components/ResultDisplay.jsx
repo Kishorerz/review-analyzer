@@ -12,7 +12,11 @@ import {
   ArrowRight,
   GitCompare,
   Languages,
-  Check
+  Check,
+  Bot,
+  ScanText,
+  Download,
+  Mail
 } from 'lucide-react';
 
 export default function ResultDisplay({ 
@@ -107,6 +111,28 @@ export default function ResultDisplay({
               <span>Translation</span>
             </button>
           )}
+
+          {results.ocr && (
+            <button
+              type="button"
+              className={`result-tab-btn ${activeTab === 'ocr' ? 'active' : ''}`}
+              onClick={() => setActiveTab('ocr')}
+            >
+              <ScanText size={16} />
+              <span>OCR Document</span>
+            </button>
+          )}
+
+          {results.rpa && (
+            <button
+              type="button"
+              className={`result-tab-btn ${activeTab === 'rpa' ? 'active' : ''}`}
+              onClick={() => setActiveTab('rpa')}
+            >
+              <Bot size={16} />
+              <span>RPA Bot Log</span>
+            </button>
+          )}
         </div>
 
         {isLocalFallback && (
@@ -139,6 +165,14 @@ export default function ResultDisplay({
 
         {activeTab === 'translation' && results.translation && (
           <TranslationView data={results.translation} />
+        )}
+
+        {activeTab === 'ocr' && results.ocr && (
+          <OcrView data={results.ocr} />
+        )}
+
+        {activeTab === 'rpa' && results.rpa && (
+          <RpaView data={results.rpa} />
         )}
       </div>
     </div>
@@ -508,6 +542,176 @@ function TranslationView({ data }) {
           </button>
         </div>
         <p className="summary-text">{data.translated_text}</p>
+      </div>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------
+// 7. OCR DOCUMENT / HANDWRITTEN VIEW COMPONENT
+// -------------------------------------------------------------------
+function OcrView({ data }) {
+  const fields = data.extracted_fields || {};
+  const hasAnyField =
+    (fields.emails?.length > 0) ||
+    (fields.amounts?.length > 0) ||
+    (fields.dates?.length > 0) ||
+    (fields.order_ids?.length > 0);
+
+  return (
+    <div className="view-panel animate-fade-in">
+      <div className="view-badge-row">
+        <span className="view-badge badge-blue">
+          <ScanText size={14} /> Document / Handwritten OCR Result
+        </span>
+        <span className="compression-badge">
+          {data.document_type}
+        </span>
+      </div>
+
+      <div className="stats-strip">
+        <div className="stat-box">
+          <span className="stat-label">Source Input</span>
+          <span className="stat-value" style={{ textTransform: 'capitalize' }}>{data.source_mode}</span>
+        </div>
+        <div className="stat-box">
+          <span className="stat-label">File / Origin</span>
+          <span className="stat-value" style={{ fontSize: '0.92rem' }}>{data.filename}</span>
+        </div>
+        <div className="stat-box">
+          <span className="stat-label">Extracted Words</span>
+          <span className="stat-value text-emerald">{data.word_count} words</span>
+        </div>
+      </div>
+
+      <div className="summary-highlight-box">
+        <h4 className="box-title">Cleaned OCR Text</h4>
+        <p className="summary-text">{data.cleaned_text}</p>
+      </div>
+
+      {hasAnyField && (
+        <div className="keywords-section">
+          <span className="keyword-header positive-header">Extracted Document Entities:</span>
+          <div className="tags-container">
+            {fields.order_ids?.map((id, i) => <span key={`o-${i}`} className="tag tag-intent">Order: {id}</span>)}
+            {fields.amounts?.map((amt, i) => <span key={`a-${i}`} className="tag tag-pos">Amount: {amt}</span>)}
+            {fields.dates?.map((dt, i) => <span key={`d-${i}`} className="tag tag-pos">Date: {dt}</span>)}
+            {fields.emails?.map((em, i) => <span key={`e-${i}`} className="tag tag-intent">Email: {em}</span>)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------
+// 8. RPA AUTOMATION WORKFLOW VIEW COMPONENT
+// -------------------------------------------------------------------
+function RpaView({ data }) {
+  const [copiedReply, setCopiedReply] = React.useState(false);
+
+  const handleCopyReply = () => {
+    navigator.clipboard.writeText(data.auto_reply || '');
+    setCopiedReply(true);
+    setTimeout(() => setCopiedReply(false), 2000);
+  };
+
+  // Download structured CSV record (Classic RPA report export)
+  const handleDownloadCsv = () => {
+    const routing = data.routing || {};
+    const sentiment = data.analysis?.sentiment || {};
+    const intent = data.analysis?.intent || {};
+    const summary = data.analysis?.summarization?.summary || '';
+
+    const csvEscape = (val) => `"${String(val || '').replace(/"/g, '""')}"`;
+    const headers = ['Ticket ID', 'Timestamp', 'Source Mode', 'Document Type', 'Sentiment', 'Stars', 'Primary Intent', 'Department', 'Priority', 'SLA Hours', 'Summary'];
+    const row = [
+      data.ticket_id,
+      data.timestamp,
+      data.source_mode,
+      data.document_info?.document_type,
+      sentiment.sentiment,
+      sentiment.predicted_rating,
+      intent.primary_intent,
+      routing.department,
+      routing.priority,
+      routing.sla_hours,
+      summary
+    ];
+
+    const csvContent = headers.map(csvEscape).join(',') + '\n' + row.map(csvEscape).join(',');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${data.ticket_id}_rpa_report.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const routing = data.routing || {};
+
+  return (
+    <div className="view-panel animate-fade-in">
+      <div className="view-badge-row">
+        <span className="view-badge badge-emerald">
+          <Bot size={14} /> RPA Bot Execution Report
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span className="urgency-pill urgency-medium">Ticket: {data.ticket_id}</span>
+          <button type="button" className="text-action-btn text-action-btn-highlight" onClick={handleDownloadCsv}>
+            <Download size={13} /> Export CSV Report
+          </button>
+        </div>
+      </div>
+
+      {/* Routing Summary Cards */}
+      <div className="stats-strip">
+        <div className="stat-box">
+          <span className="stat-label">Assigned Department</span>
+          <span className="stat-value" style={{ fontSize: '0.9rem', textAlign: 'center' }}>{routing.department}</span>
+        </div>
+        <div className="stat-box">
+          <span className="stat-label">Bot Priority</span>
+          <span className="stat-value text-emerald" style={{ fontSize: '0.95rem' }}>{routing.priority}</span>
+        </div>
+        <div className="stat-box">
+          <span className="stat-label">Target SLA</span>
+          <span className="stat-value">{routing.sla_hours} hours</span>
+        </div>
+      </div>
+
+      {/* 4-Step RPA Execution Pipeline */}
+      <div className="takeaways-section">
+        <h4 className="takeaways-title">Automated Bot Workflow Steps</h4>
+        <ul className="takeaways-list">
+          {(data.steps || []).map((st) => (
+            <li key={st.step} className="takeaway-item">
+              <CheckCircle size={16} className="item-icon-check" />
+              <div>
+                <strong>Step {st.step}: {st.name}</strong>
+                <div style={{ fontSize: '0.84rem', color: '#94a3b8', marginTop: '2px' }}>{st.detail}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Auto-Drafted Email Reply */}
+      <div className="action-recommendation-card">
+        <div className="rec-header" style={{ justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Mail size={16} className="rec-icon" />
+            <span className="rec-title">Auto-Drafted Customer Response</span>
+          </div>
+          <button type="button" className="text-action-btn" onClick={handleCopyReply}>
+            {copiedReply ? <Check size={12} /> : null}
+            {copiedReply ? 'Copied' : 'Copy Reply'}
+          </button>
+        </div>
+        <pre className="rpa-reply-pre">{data.auto_reply}</pre>
       </div>
     </div>
   );

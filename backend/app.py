@@ -22,6 +22,8 @@ from emotion_analysis import analyze_emotion
 from intent_analysis import analyze_intent
 from similarity_service import compute_similarity
 from translation_service import translate_text
+from ocr_service import process_document
+from rpa_service import run_rpa_workflow
 from nlp_engine import analyze_all
 
 app = Flask(__name__)
@@ -43,13 +45,19 @@ def home():
             'summarize': 'text_summarization.py',
             'sentiment': 'sentiment_analysis.py',
             'emotion': 'emotion_analysis.py',
-            'intent': 'intent_analysis.py'
+            'intent': 'intent_analysis.py',
+            'ocr': 'ocr_service.py',
+            'rpa': 'rpa_service.py'
         },
         'endpoints': [
             '/api/summarize',
             '/api/sentiment',
             '/api/emotion',
             '/api/intent',
+            '/api/translate',
+            '/api/similarity',
+            '/api/ocr-process',
+            '/api/rpa-run',
             '/api/analyze-all'
         ]
     })
@@ -127,6 +135,32 @@ def similarity():
     text1 = data.get('text1', '')
     text2 = data.get('text2', '')
     result = compute_similarity(text1, text2)
+    return jsonify({'success': True, 'data': result})
+
+@app.route('/ocr-process', methods=['POST', 'OPTIONS'])
+@app.route('/api/ocr-process', methods=['POST', 'OPTIONS'])
+def ocr_process():
+    """Document & Handwritten OCR Cleanup Endpoint -> ocr_service.py"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    data = request.get_json(silent=True) or {}
+    text = data.get('text', '')
+    source_mode = data.get('source_mode', 'document')
+    filename = data.get('filename', 'Scanned Document')
+    result = process_document(text, source_mode=source_mode, filename=filename)
+    return jsonify({'success': True, 'data': result})
+
+@app.route('/rpa-run', methods=['POST', 'OPTIONS'])
+@app.route('/api/rpa-run', methods=['POST', 'OPTIONS'])
+def rpa_run():
+    """RPA Bot Automation Pipeline Endpoint -> rpa_service.py"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    data = request.get_json(silent=True) or {}
+    text = data.get('text', '')
+    source_mode = data.get('source_mode', 'document')
+    filename = data.get('filename', 'Input Text')
+    result = run_rpa_workflow(text, source_mode=source_mode, filename=filename)
     return jsonify({'success': True, 'data': result})
 
 @app.route('/analyze-all', methods=['POST', 'OPTIONS'])

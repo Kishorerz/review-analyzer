@@ -126,6 +126,24 @@ export default function ArchitectureModal({ isOpen, onClose }) {
                     <td><code>POST /api/similarity</code></td>
                     <td>Computes Jaccard word set overlap and Cosine term frequency vectors between 2 reviews to detect duplicates and template spam.</td>
                   </tr>
+                  <tr>
+                    <td><strong>Doc & Handwritten OCR</strong></td>
+                    <td><code>ocr_service.py</code></td>
+                    <td><code>POST /api/ocr-process</code></td>
+                    <td>Extracts text from uploaded images/docs & handwritten pad via Tesseract.js, then cleans noise and extracts Order IDs, amounts & dates.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Text to Voice</strong></td>
+                    <td><code>Browser Native</code></td>
+                    <td><code>SpeechSynthesis API</code></td>
+                    <td>Reads the processed review or extracted document text aloud using native browser speech synthesis.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>RPA Automation Bot</strong></td>
+                    <td><code>rpa_service.py</code></td>
+                    <td><code>POST /api/rpa-run</code></td>
+                    <td>Executes a 4-step workflow: Ingest/Clean ➔ Analyze ➔ Route Ticket & SLA ➔ Generate Auto-Reply & Exportable CSV Report.</td>
+                  </tr>
                 </tbody>
               </table>
             </div>

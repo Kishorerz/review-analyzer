@@ -88,6 +88,102 @@ export async function requestSimilarity(text1, text2) {
   }
 }
 
+export async function requestOcrProcess(text, sourceMode = 'document', filename = 'Scanned Document') {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/ocr-process`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, source_mode: sourceMode, filename })
+    });
+    if (!response.ok) throw new Error(`Server returned HTTP ${response.status}`);
+    const json = await response.json();
+    return { success: true, data: json.data, isLocalFallback: false };
+  } catch (err) {
+    console.warn('OCR process fallback:', err.message);
+    const cleaned = (text || '').replace(/\s+/g, ' ').trim();
+    const emails = cleaned.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+    const amounts = cleaned.match(/(?:\$|₹|€|£|Rs\.?\s?)\d+(?:,\d{3})*(?:\.\d{1,2})?/g) || [];
+    const dates = cleaned.match(/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/g) || [];
+    const orderIds = cleaned.match(/\b(?:ORD|INV|REF|ID)[-#:]?\s?[A-Z0-9]{4,12}\b/gi) || [];
+    return {
+      success: true,
+      data: {
+        cleaned_text: cleaned,
+        document_type: sourceMode === 'handwritten' ? 'Handwritten Note / Feedback' : 'Scanned Document',
+        source_mode: sourceMode,
+        filename,
+        word_count: cleaned ? cleaned.split(/\s+/).length : 0,
+        char_count: cleaned.length,
+        extracted_fields: {
+          emails: [...new Set(emails)].slice(0, 5),
+          amounts: [...new Set(amounts)].slice(0, 5),
+          dates: [...new Set(dates)].slice(0, 5),
+          order_ids: [...new Set(orderIds)].slice(0, 5)
+        },
+        status: 'Processed Successfully'
+      },
+      isLocalFallback: true
+    };
+  }
+}
+
+export async function requestRpaWorkflow(text, sourceMode = 'document', filename = 'Input Text') {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/rpa-run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, source_mode: sourceMode, filename })
+    });
+    if (!response.ok) throw new Error(`Server returned HTTP ${response.status}`);
+    const json = await response.json();
+    return { success: true, data: json.data, isLocalFallback: false };
+  } catch (err) {
+    console.warn('RPA workflow fallback:', err.message);
+    const docRes = await requestOcrProcess(text, sourceMode, filename);
+    const allRes = clientSideFallbackAnalysis('analyze-all', docRes.data.cleaned_text);
+    const intentCode = allRes.intent.intent_code;
+    const isRefund = intentCode === 'refund_return';
+    const isDefect = intentCode === 'defect_complaint';
+    const dept = isRefund
+      ? 'Refunds & Billing Automation Desk'
+      : isDefect
+      ? 'Hardware / QA Warranty Support'
+      : intentCode === 'inquiry_question'
+      ? 'Customer Care & FAQ Bot'
+      : 'Marketing & Testimonials Hub';
+    const priority = isRefund || isDefect ? 'P1 - Urgent' : 'P3 - Low';
+    const ticketId = 'RPA-' + Math.random().toString(36).substring(2, 7).toUpperCase();
+
+    return {
+      success: true,
+      data: {
+        ticket_id: ticketId,
+        timestamp: new Date().toLocaleString(),
+        status: 'Completed Successfully',
+        source_mode: sourceMode,
+        document_info: docRes.data,
+        routing: {
+          department: dept,
+          queue: isRefund ? 'RMA-Returns' : 'Auto-Queue',
+          sla_hours: isRefund || isDefect ? 4 : 24,
+          priority
+        },
+        auto_reply: isRefund
+          ? 'Hello,\n\nYour return/refund request has been automatically logged with High Priority. Our team is processing your authorization.\n\nBest regards,\nAutomated Support'
+          : 'Hello,\n\nThank you for your feedback! Our automated system has logged your message and routed it to the right team.\n\nBest regards,\nCustomer Support',
+        steps: [
+          { step: 1, name: 'Document / OCR / Voice Ingestion', status: 'completed', detail: `Captured ${docRes.data.word_count} words from ${sourceMode.toUpperCase()} input.` },
+          { step: 2, name: 'Cognitive AI Analysis', status: 'completed', detail: `Sentiment: ${allRes.sentiment.sentiment} | Intent: ${allRes.intent.primary_intent}.` },
+          { step: 3, name: 'Automated Ticket & Routing Rule', status: 'completed', detail: `Created Ticket ${ticketId} (${priority}) -> ${dept}.` },
+          { step: 4, name: 'Response Draft & Structured Export', status: 'completed', detail: 'Generated auto-reply template & exportable CSV/JSON record.' }
+        ],
+        analysis: allRes
+      },
+      isLocalFallback: true
+    };
+  }
+}
+
 export async function requestAnalysis(endpoint, text) {
   try {
     const response = await fetch(`${API_BASE_URL}/api/${endpoint}`, {

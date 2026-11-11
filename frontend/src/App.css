@@ -1676,3 +1676,216 @@ body {
 .fill-amber {
   background: var(--amber-400);
 }
+
+/* ===================================================================
+   RPA Action Button & Top Pill Group
+   =================================================================== */
+.top-action-pills {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.rpa-run-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.rpa-run-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+}
+
+.rpa-run-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.rpa-reply-pre {
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: #e2e8f0;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  margin-top: 6px;
+}
+
+/* ===================================================================
+   Document & Handwritten OCR Scanner Panel
+   =================================================================== */
+.ocr-panel {
+  margin-bottom: 16px;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: var(--radius-md);
+}
+
+.ocr-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ocr-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.ocr-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--bg-card-border);
+  color: #94a3b8;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.ocr-tab-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ocr-tab-btn.active {
+  background: var(--primary-500);
+  border-color: var(--primary-500);
+  color: #fff;
+}
+
+.ocr-dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 22px;
+  border: 2px dashed rgba(99, 102, 241, 0.4);
+  border-radius: var(--radius-md);
+  background: rgba(99, 102, 241, 0.05);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.ocr-dropzone:hover {
+  background: rgba(99, 102, 241, 0.12);
+  border-color: var(--primary-500);
+}
+
+.ocr-drop-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ocr-drop-text strong {
+  font-size: 0.9rem;
+  color: #f1f5f9;
+}
+
+.ocr-drop-text span {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.ocr-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-sm);
+}
+
+.ocr-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.ocr-file-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.84rem;
+  color: #cbd5e1;
+}
+
+.handwriting-area {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.handwriting-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.handwriting-canvas {
+  width: 100%;
+  max-width: 680px;
+  height: 170px;
+  background: #ffffff;
+  border-radius: var(--radius-sm);
+  border: 2px solid rgba(99, 102, 241, 0.45);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.handwriting-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.ocr-status-bar {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ocr-status-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: #a5b4fc;
+}
+
+.ocr-progress-track {
+  width: 100%;
+  height: 6px;
+  background: #1e293b;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ocr-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #34d399);
+  transition: width 0.2s ease;
+}

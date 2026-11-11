@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlignLeft, Smile, Heart, Compass, GitCompare, Zap, Loader2 } from 'lucide-react';
+import { AlignLeft, Smile, Heart, Compass, GitCompare, Bot, Zap, Loader2 } from 'lucide-react';
 
 export default function ActionButtons({ onAnalyze, activeTab, loadingType, hasCompareText }) {
   const actions = [
@@ -44,19 +44,36 @@ export default function ActionButtons({ onAnalyze, activeTab, loadingType, hasCo
     <div className="action-buttons-section">
       <div className="section-title-row">
         <h3 className="section-title">Select Analysis Type</h3>
-        <button
-          type="button"
-          className={`analyze-all-btn ${loadingType === 'analyze-all' ? 'is-loading' : ''}`}
-          onClick={() => onAnalyze('analyze-all')}
-          disabled={!!loadingType}
-        >
-          {loadingType === 'analyze-all' ? (
-            <Loader2 className="spin-icon" size={17} />
-          ) : (
-            <Zap size={17} />
-          )}
-          <span>⚡ Run Complete Analysis (All)</span>
-        </button>
+        <div className="top-action-pills">
+          <button
+            type="button"
+            className={`rpa-run-btn ${loadingType === 'rpa' ? 'is-loading' : ''}`}
+            onClick={() => onAnalyze('rpa')}
+            disabled={!!loadingType}
+            title="Run 4-step Robotic Process Automation: Clean OCR + Analyze + Route Ticket + Draft Reply"
+          >
+            {loadingType === 'rpa' ? (
+              <Loader2 className="spin-icon" size={17} />
+            ) : (
+              <Bot size={17} />
+            )}
+            <span>🤖 Run RPA Automation Bot</span>
+          </button>
+
+          <button
+            type="button"
+            className={`analyze-all-btn ${loadingType === 'analyze-all' ? 'is-loading' : ''}`}
+            onClick={() => onAnalyze('analyze-all')}
+            disabled={!!loadingType}
+          >
+            {loadingType === 'analyze-all' ? (
+              <Loader2 className="spin-icon" size={17} />
+            ) : (
+              <Zap size={17} />
+            )}
+            <span>⚡ Run Complete Analysis (All)</span>
+          </button>
+        </div>
       </div>
 
       <div className="action-grid action-grid-5">

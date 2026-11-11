@@ -4,12 +4,15 @@ import ReviewInput from './components/ReviewInput';
 import ActionButtons from './components/ActionButtons';
 import ResultDisplay from './components/ResultDisplay';
 import ArchitectureModal from './components/ArchitectureModal';
-import { checkBackendHealth, requestAnalysis, requestTranslation, requestSimilarity } from './api';
+import { checkBackendHealth, requestAnalysis, requestTranslation, requestSimilarity, requestOcrProcess, requestRpaWorkflow } from './api';
 
 export default function App() {
   const [reviewText, setReviewText] = useState('');
   const [compareText, setCompareText] = useState('');
   const [showCompare, setShowCompare] = useState(false);
+
+  const [sourceMode, setSourceMode] = useState('text');
+  const [sourceFilename, setSourceFilename] = useState('Direct Text Input');
 
   const [translationResult, setTranslationResult] = useState(null);
   const [translationLoading, setTranslationLoading] = useState(false);
@@ -63,10 +66,48 @@ export default function App() {
     }
   };
 
+  // Handle Document / Handwritten OCR Completion
+  const handleOcrExtracted = async (rawText, mode, name) => {
+    setSourceMode(mode);
+    setSourceFilename(name);
+    const res = await requestOcrProcess(rawText, mode, name);
+    if (res.success && res.data) {
+      setReviewText(res.data.cleaned_text || rawText);
+      setResults((prev) => ({
+        ...prev,
+        ocr: res.data
+      }));
+      setIsLocalFallback(res.isLocalFallback);
+      setActiveTab('ocr');
+    }
+  };
+
   // Handle Analysis Triggers
   const handleAnalyze = async (actionType) => {
     if (!reviewText.trim()) {
-      alert('Please enter, paste, or speak a review text first!');
+      alert('Please enter, paste, speak, or scan a review/document text first!');
+      return;
+    }
+
+    // RPA Bot Automation Workflow
+    if (actionType === 'rpa') {
+      setLoadingType('rpa');
+      const res = await requestRpaWorkflow(reviewText, sourceMode, sourceFilename);
+      if (res.success && res.data) {
+        const analysis = res.data.analysis || {};
+        setResults((prev) => ({
+          ...prev,
+          rpa: res.data,
+          ocr: res.data.document_info || prev.ocr,
+          summarize: analysis.summarization || prev.summarize,
+          sentiment: analysis.sentiment || prev.sentiment,
+          emotion: analysis.emotion || prev.emotion,
+          intent: analysis.intent || prev.intent
+        }));
+        setIsLocalFallback(res.isLocalFallback);
+        setActiveTab('rpa');
+      }
+      setLoadingType(null);
       return;
     }
 
@@ -140,7 +181,7 @@ export default function App() {
         />
 
         <main className="main-content">
-          {/* Review Input Box with Voice, Translate & Compare */}
+          {/* Review Input Box with Voice, OCR, Translate & Compare */}
           <ReviewInput
             reviewText={reviewText}
             setReviewText={setReviewText}
@@ -152,6 +193,9 @@ export default function App() {
             translationLoading={translationLoading}
             translationResult={translationResult}
             onApplyTranslation={handleApplyTranslation}
+            onOcrExtracted={handleOcrExtracted}
+            sourceMode={sourceMode}
+            setSourceMode={setSourceMode}
           />
 
           {/* Action Trigger Buttons */}

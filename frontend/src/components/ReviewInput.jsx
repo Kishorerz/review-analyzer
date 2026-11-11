@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clipboard, Trash2, FileText, Mic, MicOff, Languages, GitCompare, ArrowRight, Check } from 'lucide-react';
+import { Clipboard, Trash2, FileText, Mic, MicOff, Volume2, VolumeX, ScanText, Languages, GitCompare, ArrowRight, Check } from 'lucide-react';
+import DocumentOcrPanel from './DocumentOcrPanel';
 
 export default function ReviewInput({
   reviewText,
@@ -11,9 +12,14 @@ export default function ReviewInput({
   onTranslate,
   translationLoading,
   translationResult,
-  onApplyTranslation
+  onApplyTranslation,
+  onOcrExtracted,
+  sourceMode,
+  setSourceMode
 }) {
   const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [showOcrPanel, setShowOcrPanel] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(true);
   const [voiceLang, setVoiceLang] = useState('auto');
   const [targetLang, setTargetLang] = useState('es');
@@ -181,6 +187,7 @@ export default function ReviewInput({
         startAudioSonagraph();
         recognitionRef.current?.start();
         setIsListening(true);
+        if (setSourceMode) setSourceMode('voice');
       } catch (err) {
         console.warn('Speech start error:', err);
         stopAudioSonagraph();
@@ -188,11 +195,39 @@ export default function ReviewInput({
     }
   };
 
+  // Text-to-Voice (Read Aloud using Browser SpeechSynthesis)
+  const toggleSpeakText = () => {
+    if (!('speechSynthesis' in window)) {
+      alert('Text-to-voice is not supported in this browser.');
+      return;
+    }
+
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    if (!reviewText.trim()) {
+      alert('Enter or scan some text first to read it aloud.');
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(reviewText);
+    utterance.lang = voiceLang === 'auto' ? (navigator.language || 'en-US') : voiceLang;
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
   const handlePaste = async () => {
     try {
       const text = await navigator.clipboard.readText();
       if (text) {
         setReviewText(text);
+        if (setSourceMode) setSourceMode('text');
       }
     } catch (err) {
       console.warn('Clipboard read error:', err);
@@ -201,6 +236,7 @@ export default function ReviewInput({
 
   const handleClear = () => {
     setReviewText('');
+    if (setSourceMode) setSourceMode('text');
   };
 
   const handleCopyTranslation = () => {
@@ -217,8 +253,8 @@ export default function ReviewInput({
         <div className="card-title-wrap">
           <FileText className="card-icon" size={20} />
           <div>
-            <h2 className="card-title">Customer Review Input</h2>
-            <p className="card-desc">Type, paste, or speak a customer review to analyze</p>
+            <h2 className="card-title">Customer Review / Document Input</h2>
+            <p className="card-desc">Type, speak, upload documents, or write handwritten notes via OCR</p>
           </div>
         </div>
 
@@ -269,7 +305,35 @@ export default function ReviewInput({
             </select>
           </div>
 
-          {/* 2. Paste Button */}
+          {/* 2. Text-to-Voice (Read Aloud) Button */}
+          <button
+            type="button"
+            className={`text-action-btn ${isSpeaking ? 'text-action-btn-active' : ''}`}
+            onClick={toggleSpeakText}
+            title="Read review text aloud (Text-to-Voice)"
+          >
+            {isSpeaking ? (
+              <>
+                <VolumeX size={14} /> Stop Audio
+              </>
+            ) : (
+              <>
+                <Volume2 size={14} /> Read Aloud
+              </>
+            )}
+          </button>
+
+          {/* 3. Document & Handwritten OCR Button */}
+          <button
+            type="button"
+            className={`text-action-btn ${showOcrPanel ? 'text-action-btn-highlight' : ''}`}
+            onClick={() => setShowOcrPanel(!showOcrPanel)}
+            title="Scan documents, images, or write handwritten text via OCR"
+          >
+            <ScanText size={14} /> Doc / Handwritten OCR
+          </button>
+
+          {/* 4. Paste Button */}
           <button 
             type="button" 
             className="text-action-btn"
@@ -279,7 +343,7 @@ export default function ReviewInput({
             <Clipboard size={14} /> Paste
           </button>
 
-          {/* 3. Compare with 2nd review toggle */}
+          {/* 5. Compare with 2nd review toggle */}
           <button
             type="button"
             className={`text-action-btn ${showCompare ? 'text-action-btn-active' : ''}`}
@@ -289,7 +353,7 @@ export default function ReviewInput({
             <GitCompare size={14} /> Compare (Similarity)
           </button>
 
-          {/* 4. Clear Button */}
+          {/* 6. Clear Button */}
           {reviewText && (
             <button 
               type="button" 
@@ -302,6 +366,20 @@ export default function ReviewInput({
           )}
         </div>
       </div>
+
+      {/* Expandable Document & Handwritten OCR Panel */}
+      {showOcrPanel && (
+        <DocumentOcrPanel
+          onOcrComplete={(rawText, mode, name) => {
+            if (onOcrExtracted) {
+              onOcrExtracted(rawText, mode, name);
+            } else {
+              setReviewText(rawText);
+            }
+          }}
+          onClose={() => setShowOcrPanel(false)}
+        />
+      )}
 
       {/* Main Review Text Area */}
       <div className="textarea-wrapper">
