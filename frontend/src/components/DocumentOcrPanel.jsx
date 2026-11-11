@@ -1,7 +1,71 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createWorker, PSM } from 'tesseract.js';
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { Upload, PenTool, Eraser, ScanText, FileCheck, Loader2, RefreshCw, Sparkles, KeyRound, X } from 'lucide-react';
 import { requestVisionOcr } from '../api';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+
+// Extract embedded text from digital PDFs; fall back to rendered page images when PDF is scanned
+async function readPdfDocument(file, onStatus) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const maxTextPages = Math.min(pdf.numPages, 15);
+  const textPages = [];
+
+  for (let pageNum = 1; pageNum <= maxTextPages; pageNum += 1) {
+    if (onStatus) onStatus(`Reading PDF page ${pageNum} of ${pdf.numPages}...`);
+    const page = await pdf.getPage(pageNum);
+    const content = await page.getTextContent();
+    let pageText = '';
+    let lastY = null;
+
+    for (const item of content.items) {
+      if (!('str' in item)) continue;
+      const y = item.transform?.[5];
+      if (lastY !== null && typeof y === 'number' && Math.abs(y - lastY) > 4) {
+        pageText += '\n';
+      } else if (pageText && !pageText.endsWith('\n') && !pageText.endsWith(' ')) {
+        pageText += ' ';
+      }
+      pageText += item.str;
+      if (item.hasEOL) pageText += '\n';
+      if (typeof y === 'number') lastY = y;
+    }
+
+    const trimmed = pageText.replace(/[ \t]+\n/g, '\n').trim();
+    if (trimmed) textPages.push(trimmed);
+  }
+
+  const combinedText = textPages.join('\n\n').trim();
+  const maxRenderPages = Math.min(pdf.numPages, 4);
+  const pageImages = [];
+
+  // Render pages only when PDF has no selectable text (scanned/handwritten), or render page 1 for preview
+  const pagesToRender = combinedText.length >= 20 ? 1 : maxRenderPages;
+  for (let pageNum = 1; pageNum <= pagesToRender; pageNum += 1) {
+    if (combinedText.length < 20 && onStatus) {
+      onStatus(`Rendering scanned PDF page ${pageNum} of ${pagesToRender}...`);
+    }
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale: combinedText.length >= 20 ? 1.0 : 2.0 });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    pageImages.push(canvas.toDataURL('image/png'));
+  }
+
+  return {
+    numPages: pdf.numPages,
+    embeddedText: combinedText,
+    pageImages
+  };
+}
 
 // Convert any uploaded blob URL / data URL into a clean JPEG data URL for AI Vision OCR
 function prepareImageDataUrlForVision(imageSource) {
@@ -195,6 +259,7 @@ export default function DocumentOcrPanel({
   const [confidence, setConfidence] = useState(null);
   const [lowAccuracyHint, setLowAccuracyHint] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
+  const [pdfPageImages, setPdfPageImages] = useState([]);
   const [fileName, setFileName] = useState('');
 
   // Handwritten Canvas Refs
@@ -265,8 +330,9 @@ export default function DocumentOcrPanel({
     localStorage.setItem('gemini_ocr_key', val);
   };
 
-  // Run OCR via either AI Vision (best for cursive/lined paper) or Local Tesseract.js
-  const runOcrEngine = async (imageSource, mode, name, overrideEnhance, overrideEngine) => {
+  // Run OCR via either AI Vision or Local Tesseract.js across 1 image or multiple PDF page images
+  const runOcrEngine = async (imageSourceOrList, mode, name, overrideEnhance, overrideEngine) => {
+    const sources = Array.isArray(imageSourceOrList) ? imageSourceOrList : [imageSourceOrList];
     const activeEngine = overrideEngine || ocrEngine;
     const activeEnhance = overrideEnhance || enhanceMode;
     setIsScanning(true);
@@ -277,15 +343,22 @@ export default function DocumentOcrPanel({
     if (activeEngine === 'vision') {
       setStatusMsg('Transcribing with AI Vision OCR...');
       try {
-        setProgress(35);
-        const dataUrl = await prepareImageDataUrlForVision(imageSource);
-        setProgress(65);
-        const res = await requestVisionOcr(dataUrl, visionApiKey);
-        const extractedText = (res?.text || '').trim();
+        const pageTexts = [];
+        for (let idx = 0; idx < sources.length; idx += 1) {
+          setProgress(Math.round(((idx + 0.4) / sources.length) * 90));
+          if (sources.length > 1) {
+            setStatusMsg(`Transcribing page ${idx + 1} of ${sources.length} with AI Vision OCR...`);
+          }
+          const dataUrl = await prepareImageDataUrlForVision(sources[idx]);
+          const res = await requestVisionOcr(dataUrl, visionApiKey);
+          const pageTxt = (res?.text || '').trim();
+          if (pageTxt) pageTexts.push(pageTxt);
+        }
+        const extractedText = pageTexts.join('\n\n').trim();
         setIsScanning(false);
         setProgress(100);
         setConfidence(extractedText ? 98 : null);
-        setStatusMsg(extractedText ? 'AI Vision extracted handwriting cleanly!' : 'No readable text found in image.');
+        setStatusMsg(extractedText ? 'AI Vision extracted text cleanly!' : 'No readable text found.');
         if (extractedText) {
           onOcrComplete(extractedText, mode, name);
         }
@@ -301,21 +374,12 @@ export default function DocumentOcrPanel({
     setStatusMsg('Removing shadows & enhancing image...');
     let worker = null;
     try {
-      const preparedSource = await preprocessImageForOcr(
-        imageSource,
-        activeEnhance,
-        mode === 'handwritten'
-      );
-
-      setProgress(15);
-      setStatusMsg('Loading Offline OCR Engine...');
-
       worker = await createWorker('eng', 1, {
         logger: (m) => {
           if (m.status === 'recognizing text') {
             const pct = Math.max(20, Math.round(m.progress * 100));
             setProgress(pct);
-            setStatusMsg(`Reading text (${pct}%)...`);
+            setStatusMsg(sources.length > 1 ? `Reading PDF page text (${pct}%)...` : `Reading text (${pct}%)...`);
           } else {
             setStatusMsg(m.status);
           }
@@ -327,28 +391,51 @@ export default function DocumentOcrPanel({
         preserve_interword_spaces: '1'
       });
 
-      const result = await worker.recognize(preparedSource);
-      const extractedText = (result?.data?.text || '').trim();
-      const ocrConf = typeof result?.data?.confidence === 'number'
-        ? Math.max(0, Math.min(100, Math.round(result.data.confidence)))
+      const pageTexts = [];
+      const confidences = [];
+      for (let idx = 0; idx < sources.length; idx += 1) {
+        if (sources.length > 1) {
+          setStatusMsg(`Scanning page ${idx + 1} of ${sources.length}...`);
+        }
+        const preparedSource = await preprocessImageForOcr(
+          sources[idx],
+          activeEnhance,
+          mode === 'handwritten'
+        );
+        const result = await worker.recognize(preparedSource);
+        const txt = (result?.data?.text || '').trim();
+        if (txt) pageTexts.push(txt);
+        if (typeof result?.data?.confidence === 'number') {
+          confidences.push(result.data.confidence);
+        }
+      }
+
+      const extractedText = pageTexts.join('\n\n').trim();
+      const avgConf = confidences.length
+        ? Math.max(0, Math.min(100, Math.round(confidences.reduce((a, b) => a + b, 0) / confidences.length)))
         : null;
 
-      const isLow = ocrConf !== null && ocrConf < 70;
+      const isLow = avgConf !== null && avgConf < 70;
       if (!extractedText || isLow) {
         // Auto-upgrade to AI Vision OCR if backend GEMINI_API_KEY or browser key is configured
         try {
           setStatusMsg('Low offline accuracy detected — upgrading via AI Vision OCR...');
           setProgress(85);
-          const dataUrl = await prepareImageDataUrlForVision(imageSource);
-          const visionRes = await requestVisionOcr(dataUrl, visionApiKey);
-          const visionText = (visionRes?.text || '').trim();
-          if (visionText) {
+          const visionTexts = [];
+          for (let idx = 0; idx < sources.length; idx += 1) {
+            const dataUrl = await prepareImageDataUrlForVision(sources[idx]);
+            const visionRes = await requestVisionOcr(dataUrl, visionApiKey);
+            const vTxt = (visionRes?.text || '').trim();
+            if (vTxt) visionTexts.push(vTxt);
+          }
+          const combinedVision = visionTexts.join('\n\n').trim();
+          if (combinedVision) {
             setIsScanning(false);
             setProgress(100);
             setConfidence(98);
             setLowAccuracyHint(false);
-            setStatusMsg('Upgraded via AI Vision OCR for exact handwriting extraction!');
-            onOcrComplete(visionText, mode, name);
+            setStatusMsg('Upgraded via AI Vision OCR for exact extraction!');
+            onOcrComplete(combinedVision, mode, name);
             return;
           }
         } catch {
@@ -358,7 +445,7 @@ export default function DocumentOcrPanel({
 
       setIsScanning(false);
       setProgress(100);
-      setConfidence(ocrConf);
+      setConfidence(avgConf);
       setLowAccuracyHint(isLow || !extractedText);
       setStatusMsg(
         extractedText
@@ -373,7 +460,7 @@ export default function DocumentOcrPanel({
       console.error('OCR Error:', err);
       setIsScanning(false);
       setConfidence(null);
-      setStatusMsg('OCR failed. Please try a clearer image (PNG/JPG).');
+      setStatusMsg('OCR failed. Please try a clearer file or image.');
     } finally {
       if (worker) {
         try {
@@ -385,23 +472,55 @@ export default function DocumentOcrPanel({
     }
   };
 
-  // Handle Document / Image File Upload
-  const handleFileUpload = (e) => {
+  // Handle Document / PDF / Image File Upload
+  const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Reset input value so re-uploading the same file triggers onChange
     e.target.value = '';
     setFileName(file.name);
     setConfidence(null);
+    setLowAccuracyHint(false);
 
+    if (previewUrl && previewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
+    // Handle PDF Documents (digital embedded text OR scanned pages -> OCR)
     if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
-      setPreviewUrl('');
-      setStatusMsg('PDF files are binary documents. Please upload a screenshot/image (PNG, JPG) or a .TXT/.CSV file.');
+      setIsScanning(true);
+      setProgress(10);
+      setStatusMsg(`Opening PDF "${file.name}"...`);
+      try {
+        const pdfResult = await readPdfDocument(file, setStatusMsg);
+        setPdfPageImages(pdfResult.pageImages || []);
+        setPreviewUrl(pdfResult.pageImages?.[0] || '');
+
+        if (pdfResult.embeddedText && pdfResult.embeddedText.length >= 20) {
+          setIsScanning(false);
+          setProgress(100);
+          setConfidence(100);
+          setStatusMsg(`Extracted text from ${pdfResult.numPages}-page PDF!`);
+          onOcrComplete(pdfResult.embeddedText, 'document', file.name);
+        } else if (pdfResult.pageImages?.length) {
+          setStatusMsg('Scanned/handwritten PDF detected — running OCR on pages...');
+          await runOcrEngine(pdfResult.pageImages, 'document', file.name);
+        } else {
+          setIsScanning(false);
+          setStatusMsg('PDF contained no readable text or renderable pages.');
+        }
+      } catch (err) {
+        console.error('PDF Error:', err);
+        setIsScanning(false);
+        setProgress(0);
+        setStatusMsg('Could not read PDF file. Ensure it is not password-protected.');
+      }
       return;
     }
 
-    // If plain text / CSV / Markdown document, read directly without needing OCR
+    setPdfPageImages([]);
+
+    // Plain text / CSV / Markdown document -> read directly without needing OCR
     if (file.type === 'text/plain' || /\.(txt|csv|md|log)$/i.test(file.name)) {
       const reader = new FileReader();
       reader.onload = (ev) => {
@@ -416,32 +535,32 @@ export default function DocumentOcrPanel({
 
     if (!file.type.startsWith('image/') && !/\.(png|jpe?g|webp|bmp|gif|tiff?)$/i.test(file.name)) {
       setPreviewUrl('');
-      setStatusMsg('Unsupported file format. Please upload an image (PNG, JPG, WEBP) or .TXT/.CSV/.MD file.');
+      setStatusMsg('Unsupported file format. Upload a .PDF, image (PNG, JPG, WEBP), or .TXT/.CSV/.MD file.');
       return;
     }
 
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
-
-    // If image (scanned document, receipt, or photo of handwritten note) -> Run OCR
+    // Image (scanned document, receipt, or photo of handwritten note) -> Run OCR
     const imageUrl = URL.createObjectURL(file);
     setPreviewUrl(imageUrl);
     runOcrEngine(imageUrl, 'document', file.name);
   };
 
+  const getActiveOcrSource = () => (pdfPageImages.length > 0 ? pdfPageImages : previewUrl);
+
   const handleEngineChange = (newEngine) => {
     setOcrEngine(newEngine);
     setLowAccuracyHint(false);
-    if (ocrMode === 'upload' && previewUrl && !isScanning && (newEngine === 'tesseract' || visionApiKey.trim())) {
-      runOcrEngine(previewUrl, 'document', fileName || 'Uploaded Image', enhanceMode, newEngine);
+    const activeSrc = getActiveOcrSource();
+    if (ocrMode === 'upload' && activeSrc && !isScanning && (newEngine === 'tesseract' || visionApiKey.trim())) {
+      runOcrEngine(activeSrc, 'document', fileName || 'Uploaded Document', enhanceMode, newEngine);
     }
   };
 
   const handleEnhanceChange = (newMode) => {
     setEnhanceMode(newMode);
-    if (ocrMode === 'upload' && previewUrl && !isScanning && ocrEngine === 'tesseract') {
-      runOcrEngine(previewUrl, 'document', fileName || 'Uploaded Image', newMode);
+    const activeSrc = getActiveOcrSource();
+    if (ocrMode === 'upload' && activeSrc && !isScanning && ocrEngine === 'tesseract') {
+      runOcrEngine(activeSrc, 'document', fileName || 'Uploaded Document', newMode);
     }
   };
 
@@ -562,15 +681,15 @@ export default function DocumentOcrPanel({
           <label className="ocr-dropzone">
             <input
               type="file"
-              accept="image/*,.txt,.csv,.md"
+              accept="application/pdf,.pdf,image/*,.txt,.csv,.md"
               onChange={handleFileUpload}
               style={{ display: 'none' }}
               disabled={isScanning}
             />
             <Upload size={24} className="text-muted" />
             <div className="ocr-drop-text">
-              <strong>Click to Upload Document or Handwritten Photo</strong>
-              <span>Supports Images (PNG, JPG, Receipts, Handwritten Notes) &amp; Text Docs (.TXT, .CSV)</span>
+              <strong>Click to Upload PDF, Document, or Handwritten Photo</strong>
+              <span>Supports PDF (.PDF), Images (PNG, JPG, Receipts, Handwriting) &amp; Text Docs (.TXT, .CSV)</span>
             </div>
           </label>
 
@@ -584,9 +703,9 @@ export default function DocumentOcrPanel({
               <button
                 type="button"
                 className="text-action-btn ocr-rescan-btn"
-                onClick={() => runOcrEngine(previewUrl, 'document', fileName || 'Uploaded Image')}
+                onClick={() => runOcrEngine(getActiveOcrSource(), 'document', fileName || 'Uploaded Document')}
                 disabled={isScanning}
-                title="Re-run OCR with the selected filter"
+                title="Re-run OCR with the selected engine/filter"
               >
                 <RefreshCw size={13} /> Re-scan
               </button>
